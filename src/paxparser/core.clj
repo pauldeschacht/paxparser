@@ -40,10 +40,10 @@
   (fn [ctxt cell]
     (let [value (:value cell)
           values (clojure.string/split value (re-pattern separator))
-          cell* (map #(hash-map :name %1 :value %2)
+          cells (map #(hash-map :name %1 :value %2)
                      names
                      (lazy-cat values (cycle [nil])))]
-      (merge cell cell*)
+      (map #(merge cell %1) cells)
       )))
 
 (defn merge-into-cell [names join-separator]
@@ -61,14 +61,14 @@
     ctxt
     (process ctxt data)))
 
-(defn process-lines-while [condition? process {:keys [lines ctxt]}]
+(defn process-lines-while [condition? process {:keys [lines context]}]
   (if (empty? lines)
-    {:lines lines :ctxt ctxt}
-    (let [ctxt* (condition? (first lines))]
-      (if (false? (:result ctxt*))
-        {:lines lines :ctxt ctxt}
-        (let [ctxt** (process-data ctxt* (first lines))]
-          (recur process condition? {:lines (rest lines) :ctxt ctxt**}))
+    {:lines lines :context context}
+    (let [context* (condition? context (first lines))]
+      (if (false? (:result context*))
+        {:lines lines :context context}
+        (let [context** (process-data process context* (first lines))]
+          (recur condition? process {:lines (rest lines) :context context**}))
         ))))
 ;;
 ;; HEADER
@@ -76,7 +76,7 @@
 (defn header?-fn [conditions]
   (fn [ctxt line]
     (let [ctxts (map #(% ctxt line) conditions) ;list of separate context'
-          final-result (some #(true? (:result %)) ctxts)
+          final-result (true? (some #(true? (:result %)) ctxts)) ;; true or false
           ctxt* (apply merge {} ctxts)
           ]
       (merge ctxt* {:result final-result}))))
@@ -93,9 +93,10 @@
   (clojure.string/split line re-separator))
 
 (defn token-to-cells [ctxt input-spec token]
-  (if-let [split-fn (:split input-spec)]
-    (map #(merge %1 %2) (cycle [input-spec] (split-fn ctxt token)))
-    [(merge input-spec {:value token})]))
+  (let [cell (merge input-spec {:value token})]
+    (if-let [split-fn (:split input-spec)]
+      (split-fn ctxt cell)
+      [cell])))
 
 (defn tokenizer-fn [input-specs]
   (fn[ctxt line]
@@ -272,9 +273,12 @@
 ;; configuration to process raw pax data
 ;;
 
-(def raw-pax-data
-  {:header [(line-contains? ";")]
-   :input [{:index 0 :name "airline"}
+(def raw-pax-spec
+  {
+   :header [(line-contains? [";"])
+            ]
+   :input [
+           {:index 0 :name "airline"}
            {:index 1 :split (split-into-cells ["year" "month" "date"] "/")}
            {:index 6 :name "arrint"}
            {:index 7 :name "totint"}
@@ -282,10 +286,30 @@
    :columns [{:name "airline" :repeat-down true}
              ]
    
-   :output [{:name "type" :source "type"} ;; default :source "type"
+   :output [:token-separator "^"
+            {:name "type" :source "type"} ;; default :source "type"
             {:name "source" :source "source"}
             {:name "filename" :source (get-keyword :filename)}
             {:name "date" :merge (merge-into-cell ["year" "month" "01"] "-")}
             {:name "code"}
             {:name "domarr"}
             ]})
+
+(def raw-pax-lines
+  [";this is a sample"
+   "airline1,2013/05/18,2,3,4,5,300,600,garbage"
+   "airline2,2012/04/17,,,,,1000,2000"]
+  )
+
+(defn test-header [file-spec lines]
+  (let [header-conditions (:header file-spec)
+        header? (header?-fn header-conditions)
+        env {:context {} :lines lines}]
+    (process-lines-while header? nil env)
+    ))
+
+(defn test-tokenizer [file-spec lines]
+  (let [complete-input-spec (complete-tokenizer-specs (:input file-spec))
+        tokenizer (tokenizer-fn complete-input-spec)]
+    (map #(tokenizer {:token-separator ","} %1) (rest lines))))
+

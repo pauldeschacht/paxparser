@@ -1,5 +1,12 @@
 (ns paxparser.core)
 ;;
+;; helper function
+;;
+(defn- do-nothing [text data]
+  (do (println text " " data)
+      (println "type = " (type data)))
+  data)
+;;
 ;; default function for the configuration
 ;;
 (defn set-keyword [key value]
@@ -65,11 +72,9 @@
 (defn process-data [process ctxt data]
   (if (nil? process)
     ctxt
-    (let [_ (println "start process-data")
-          processed-data (process ctxt data)
-          _ (println "process-data " processed-data )]
-      (merge ctxt {:processed-rows
-                   (conj (:processed-rows ctxt) processed-data)}))))
+    (let [processed-data (process ctxt data)]
+      (merge ctxt {:processed-rows (conj (:processed-rows ctxt) processed-data)
+                   :prev-row processed-data}))))
 
 (defn process-lines-while [condition? process {:keys [lines context]}]
   (if (empty? lines)
@@ -89,7 +94,6 @@
           final-result (true? (some #(true? (:result %)) ctxts)) ;; true or false
           ctxt* (apply merge {} ctxts)
           ]
-      ;;(merge ctxt* {:result final-result})
       (update-in
        (merge ctxt* {:result final-result})
         [:global :header-lines]
@@ -170,10 +174,8 @@
       (merge current-cell {:value (:value previous-cell)})
       current-cell)))
 
-(defn do-nothing [text data]
-  (do (println text " " data))
-  data)
-
+(defn clean-cell [cell]
+  (dissoc cell :index :split :repeat-down :transform))
 
 (defn converter-fn [column-specs]
   (fn [ctxt cells] ;; returns a vector of cells
@@ -181,12 +183,9 @@
          (merge-cells-with-column-specs column-specs) ;; enrich cells with config details
          (map #(skip-cell ctxt %)) ;;
          (map #(transform-cell ctxt %))
-         (do-nothing "transformed cells")
          (map #(repeat-cell %1 %2) (:prev-row ctxt))
-         (do-nothing "repeated cells"))
-    
-
-    ))
+         (map #(clean-cell %1))
+         )))
 ;;
 ;; ROW (TOKENIZER and CONVERTER)
 ;;
@@ -194,25 +193,47 @@
   (fn [ctxt line]
     (->> line
          (tokenizer ctxt) ;; line --> vector of tokens --> vector of basic cells
-         (do-nothing "after tokenizer")
          (converter ctxt) ;; vector basic cells --> vector of enriched/transformed cells
-         (do-nothing "after converter")
-         (conj (:processed-rows ctxt))
-         (merge ctxt)
          ))) 
 ;;
 ;; OUTPUT
 ;;
 ;; merge with {:source n} where n comes from {:name n}
+(defn complete-output-spec [{:keys [name source value] output-spec}]
+  (if (nil? value)
+    (if (nil? source)
+      (merge {:source name} output-spec)
+      output-spec)
+    output-spec)
+  )
+
 (defn complete-output-specs [output-specs]
-  (map #(merge {:source (:name %)} %)
-       output-specs)
+  (map #(complete-output-spec %) output-specs))
+
+(defn copy-value-into-output [ctxt cells {:keys [name source value]}]
+  (if (not (nil? value))
+    {:name name :value value}
+    (if (not (nil? source))
+      (let [source-cell (find-spec-by-name cells name)]
+        {:name name (:value source-cell)}
+        )
+      ))
+  )
+
+(defn copy-values-into-output [ctxt cells {:keys [name merge]}]
+  (if (not (nil? name))
+    (if-let [cell (find-cell-by-name name cells)]
+      (copy-value-into-output ctxt cells output-spec)
+      {:name name :value nil})
+    (if (not (nil? merge))
+      (merge-output-values ctxt cells merge)
+      {:name name :value nil}))
   )
 
 (defn output-fn [output-specs]
   (let [full-output-specs (complete-output-specs output-specs)])
   (fn [ctxt cells]
-    cells))
+    (map #(copy-values-into-output ctxt cells %) cells)))
 
 ;;
 ;; PROCESS THE LINES
@@ -256,12 +277,6 @@
             (map #(input-spec-at-index % input-specs) (range 0 (inc max-index))))))
 
 ;;
-;;ADD EMPTY ROW FOR THE REPEATER --> no longer used
-;;
-(defn construct-empty-row [spec]
-  {:prev-row (map #(merge {:value nil} %) spec)}
-  )
-;;
 ;; ADD DEFAULT VALUES TO ALL THE SPEC
 ;;
 (defn add-defaults-to-spec [spec]
@@ -277,21 +292,60 @@
    :columns (:columns spec)
    :output (:output spec)
    :processed-rows []
-   :prev-row (cycle [nil])
-   }
-  )
-
-;; test config
-;;
-(def config
-  {:global { :token-separator ","
-            :thousand-separator nil
-            :decimal-separator "."}
-   :header[(line-contains? ["SCHEDULE" "Inbound" "Outbound"])
-           (line-contains? ["NACIONAL"] (set-keyword :traffic "domestic"))
-           (line-contains? ["2013"] (set-version "2013"))
-           (line-empty?)]
+   ;;   :prev-row (cycle [nil])
+   :prev-row [nil nil nil nil nil nil nil nil nil nil nil nil ]
    })
+
+;;
+;; ACI functions and specifications
+;;
+(defn aci-pax-to-int []
+  (fn [ctxt value]
+    (if (= value "*****")
+      nil
+      (read-string (clojure.string/replace value " " ""))
+      )))
+
+(defn aci-trim []
+  (fn [ctxt value]
+    (clojure.string/trim value)))
+
+(def aci-spec
+  {:global {:token-separator ";"
+            :thousand-separator " "
+            :decimal-separator "."}
+   :header[(line-contains? ["CODE" "COUNTRY"])]
+   :input [{:index 0 :name "region"}
+           {:index 1 :name "city-country-code" :split (split-into-cells ["name" "country"] ",")}
+           {:index 2 :name "code"}
+           {:index 3 :name "tottot"}
+           {:index 4 :name "increase"}
+           ]
+   :columns [{:name "tottot" :transform (aci-pax-to-int)}
+             {:name "code" :transform (aci-trim)}
+             {:name "country" :transform (aci-trim)}]
+   :output [{:name "type" :value "airport"}
+            {:name "code"}
+            {:name "name"}
+            {:name "country" ;; :merge (merge-cells ["name" "country"] "-")
+             }
+            {:name "tottot"}
+            {:name "increase"}]
+   })
+
+;; CONVERTER
+;; :name mandatory, must exist in the input cells
+;; :transform; function that will transform the value (defined as string)
+;; :skip; if this function returns true, the complete row will be ignored
+;; :repeat: if field is true and the value is empty in the cell, the value will be copied from previous row
+ 
+;; OUTPUT
+;;  :name mandatory, used to respect sequence in the output file
+;;  :value val  --> hardcoded value
+;;  :source s   --> find value in converted cell with the name s
+;;  :merge      --> function that combines different converter cells
+;;
+
 ;;
 ;; btre international config
 ;;
@@ -318,126 +372,22 @@
             ]
    })
 ;;
-;; raw pax spec
 ;;
+;;
+(defn read-lines [filename]
+  (clojure.string/split (slurp filename) #"\n"))
 
-(def raw-pax-spec
-  {
-   :global {:thousand-separator ","
-            :decimal-separator "."
-             :token-separator ","
-            }
-   :header [(line-contains? [";"])
-            ]
-   :input [
-           {:index 0 :name "airline"}
-           {:index 1 :split (split-into-cells ["year" "month" "date"] "/")}
-           {:index 6 :name "arrint"}
-           {:index 7 :name "totint"}
-           ]
-   :columns [{:name "airline" :repeat-down true}
-             {:name "year"} ;;splitted should be possible to derive from input-specs
-             {:name "month" :transform (convert-to-int)}
-             {:name "date" :transform (convert-to-int)}
-             ]  
-   :output [
-            {:name "type" :source "type"} ;; default :source "type"
-            {:name "source" :source "source"}
-            {:name "filename" :source (get-keyword :filename)}
-            {:name "date" :merge (merge-into-cell ["year" "month" "01"] "-")}
-            {:name "code"}
-            {:name "domarr"}
-            ]})
-
-(def raw-pax-lines
-  [";this is a sample"
-   "airline1,2013/05/18,2,3,4,5,300,600,garbage"
-   ",2013/04/17,,,,,1000,2000"]
-  )
-
-(defn test-header [file-spec lines]
-  (let [header-conditions (:header file-spec)
-        header? (header?-fn header-conditions)
-        env {:context file-spec :lines lines}]
-    (process-lines-while header? nil env)
-    ))
-
-(defn test-tokenizer [file-spec lines]
-  (let [complete-input-spec (complete-tokenizer-specs (:input file-spec))
-        tokenizer (tokenizer-fn complete-input-spec)]
-    (map #(tokenizer file-spec %1) lines)))
-
-(defn test-tokenizer-verbose [file-spec line]
-  (let [complete-input-spec (complete-tokenizer-specs (:input file-spec))
-        _ (println "specs: " complete-input-spec)
-        tokenizer (tokenizer-fn complete-input-spec)
-        tokens (line-to-tokens #"," line)
-        _ (println "tokens: " tokens)
-        cells1 (token-to-cells {} (first complete-input-spec) (first tokens))
-        _ (println "cells 1: " cells1)
-        cells2 (token-to-cells {} (second complete-input-spec) (second tokens))
-        _ (println "cells 2: " cells2)
-        allcells (map #(token-to-cells {} %1 %2) complete-input-spec tokens)
-        _ (println "all cells: " allcells)
-        allcells* (flatten allcells)
-        _ (println "flatten cells: " allcells*)
-        cells* (filter #(not ( nil? (:name %))) allcells*)
-        _ (println "result: " cells*)
-        ]))
-
-(defn test-converter [file-spec rows]
-  (let [complete-converter-specs (complete-column-specs (:input file-spec) (:columns file-spec))
-        converter (converter-fn complete-converter-specs)
-        ]
-    (map #(converter {:prev-row (cycle [nil])} %1) rows))
-  )
-
-
-(defn test-converter-verbose [file-spec row]
-  (let [complete-converter-specs (complete-column-specs (:input file-spec) (:columns file-spec))
-        converter (converter-fn complete-converter-specs)
-
-        empty-row (construct-empty-row complete-converter-specs)
-
-        ctxt {:prev-row (cycle [nil])}
-        
-        cells (merge-cells-with-column-specs complete-converter-specs row) ;; enrich cells with config details
-;;        _ (println "enriched cells: " cells)
-        
-        skipped-cells (map #(skip-cell ctxt %) cells)
-;;        _ (println "skip cells: " skipped-cells)
-        
-        transformed-cells (map #(transform-cell ctxt %) skipped-cells)
-;;        _ (println "transformed cells: " transformed-cells)
-
-;;        tst1 (repeat-cell (first (:prev-row ctxt)) (first transformed-cells))
-;;        _ (println "test: " tst1)
-        
-;;        tst2 (repeat-cell (second (:prev-row ctxt)) (second transformed-cells))
-;;        _ (println "test: " tst2)
-
-        repeat-cells (map #(repeat-cell %1 %2) (:prev-row ctxt) transformed-cells)
-;;        _ (println "result: " repeat-cells)
-
-        ]
-    repeat-cells
-    ))
-
-(defn test-colums [file-spec lines]
-  (let [])
-  )
-
-
-(defn test-process-rows [full-spec env]
-  (let [header? (header?-fn (:header full-spec))
+(defn process-aci [lines]
+  (let [full-spec (add-defaults-to-spec aci-international-spec)
+        header? (header?-fn (:header full-spec))
         tokenizer (tokenizer-fn (:input full-spec))
         converter (converter-fn (:columns full-spec))
         process-row (process-row-fn tokenizer converter)
-        footer? (footer?-fn (:footer full-spec))
-        ]
-    (process-lines-while (fn [ctxt line]
-                           (not (or (header? ctxt line)
-                                    (footer? ctxt line)))) process-row env))
-  
-  )
-
+        footer? (footer?-fn (:footer full-spec))]
+    
+    (->> {:context full-spec :lines lines}
+         (process-lines-while header? nil)
+         (process-lines-while (fn [ctxt line]
+                                (not (or (header? ctxt line)
+                                         (footer? ctxt line)))) process-row)
+         (process-lines-while footer? nil))))

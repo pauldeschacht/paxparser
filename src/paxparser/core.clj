@@ -1,6 +1,7 @@
 (ns paxparser.core
   (:use [clojure.java.io])
-  (:use [dk.ative.docjure.spreadsheet]))
+  (:use [dk.ative.docjure.spreadsheet])
+  (:import (org.apache.poi.ss.usermodel Cell DataFormatter DateUtil)))
 ;;
 ;; helper function
 ;;
@@ -28,7 +29,12 @@
     (:version ctxt)))
 
 (defn substring? [word line]
-  (not (= -1 (.indexOf line word))))
+  (let [str-word (str word)
+        str-line (str line)]
+    (cond
+     (empty? str-word) nil
+     (nil? str-line) nil
+     :else (not (= -1 (.indexOf (str str-line) (str str-word)))))))
 
 (defn line-contains? [words & body]
   (fn [ctxt line]
@@ -104,6 +110,7 @@
     (let [ctxts (map #(% ctxt line) conditions) ;list of separate context'
           final-result (true? (some #(true? (:result %)) ctxts)) ;; true or false
           ctxt* (apply merge {} ctxts)
+          _ (println "header? " final-result)
           ]
       (update-in
        (merge ctxt* {:result final-result})
@@ -119,10 +126,11 @@
     (let [ctxts (map #(% ctxt line) conditions) ;list of separate context'
           final-result (true? (some #(true? (:result %)) ctxts)) ;; true or false
           ctxt* (apply merge {} ctxts)
+          _ (println "footer? " final-result)
           ]
       (update-in
        (merge ctxt* {:result final-result})
-       [:global :footer-lines]
+       [:global :header-lines]
        inc
        ))))
 ;;
@@ -139,7 +147,9 @@
 (defn tokenizer-fn [input-specs]
   (fn[ctxt line]
     (->> line
+         (do-nothing "line: ")
          (line-to-tokens (re-pattern (get-in ctxt [:global :token-separator]))) ;; vector of tokens (token is just a string)
+
          (map #(token-to-cells ctxt %1 %2) input-specs)
          ;; vector of cells
          ;; cell is a hashmap with :index :name :value :split (and others specified in input-spec)
@@ -180,7 +190,9 @@
 
 (defn skip-cell [ctxt cell]
   (if-let [skip-fn (:skip-row cell)]
-    (merge cell {:skip (skip-fn ctxt (:value cell))})
+    (do
+;;      (println "skip-cell with value " (:value cell) " is " (skip-fn ctxt (:value cell)))
+      (merge cell {:skip (skip-fn ctxt (:value cell))}))
     cell))
 
 (defn transform-cell [ctxt cell]
@@ -220,18 +232,28 @@
 ;;         (do-nothing "enriched cells")
          (map #(skip-cell ctxt %)) ;;
          (map #(transform-cell ctxt %))
+;;         (do-nothing "transformed cells")
          (map #(repeat-cell %1 %2) (:prev-row ctxt))
+;;         (do-nothing "repeated cells")
          (merge-cells ctxt)
+;;         (do-nothing "merged cells")
          (map #(clean-cell %1))
          )))
 ;;
 ;; ROW (TOKENIZER and CONVERTER)
 ;;
+(defn skip-row [cells]
+  (if (some #(true? (:skip %)) cells)
+    nil
+    cells))
+
 (defn process-row-fn [tokenizer converter]
   (fn [ctxt line]
     (->> line
          (tokenizer ctxt) ;; line --> vector of tokens --> vector of basic cells
          (converter ctxt) ;; vector basic cells --> vector of enriched/transformed cells
+;;         (do-nothing "after converter")
+         (skip-row) ;; nil is one of the cells has the :skip flag set to true
          ))) 
 ;;
 ;; OUTPUT
@@ -343,10 +365,25 @@
 ;;
 ;; XLS TO CSV
 ;;
+(defn xls-cell-to-string [^Cell cell]
+  (-> (DataFormatter.)
+      (.formatCellValue cell))
+  
+  ;; (let [cell-type (.getCellType cell)]
+  ;;   (cond
+  ;;    (= cell-type Cell/CELL_TYPE_BLANK) ""
+  ;;    (= cell-type Cell/CELL_TYPE_BOOLEAN) (true? (.getBooleanCellValue cell) "true" "false") 
+  ;;    (= cell-type Cell/CELL_TYPE_STRING) (.getStringCellValue cell)
+  ;;    (= cell-type Cell/CELL_TYPE_NUMERIC) (-> (DataFormatter.)
+  ;;                                             (.formatCellValue cell)
+  ;;                                             )))
+
+  )
+
 (defn xls-row-to-line [separator row]
   (->> row
    (cell-seq)
-   (map #(str (read-cell %)))
+   (map #(xls-cell-to-string %))
    (clojure.string/join separator)
    ))
 
@@ -376,7 +413,7 @@
 
 (defmulti read-lines
   (fn [params]
-    (get-file-extension (params :filename)) ;;?? pass params and not (:filename params)
+    (get-file-extension params) ;;?? pass params and not (:filename params)
     ))
 (defmethod read-lines :csv [{:keys [filename max]}]
   (let [lines (clojure.string/split (slurp filename) #"\n")]
@@ -420,8 +457,8 @@
     (->> {:context full-spec :lines lines}
          (process-lines-while header? nil)
          (process-lines-while (fn [ctxt line]
-                                (not (or (header? ctxt line)
-                                         (footer? ctxt line)))) process-row)
+                                (not (or {:result (footer? ctxt line)}
+                                         {:result  (header? ctxt line)}))) process-row)
          (process-lines-while footer? nil)
          (move-lines-in-env)
          (process-lines-while true-condition? output-row)
@@ -440,8 +477,10 @@
   true)
 
 
-(defn convert-file [input-filename spec output-filename]
-  (let [lines (read-lines {:filename input-filename :sheetname "Sheet1"})
+(defn convert-file [input-filename spec output-filename sheetname]
+  (let [params {:filename input-filename :sheetname sheetname}
+        lines (read-lines params)
+        _ (println params)
         env (process-lines spec lines)
         converted-lines (get-in env [:context :processed-rows])
         output-separator (get-in spec [:global :output-separator])        
@@ -580,32 +619,50 @@
 ;;
 ;; btre international config
 ;;
-(def btre-int-file-spec
-  {:global {:thousand-separator ","
-            :decimal-separator "."
-            :token-separator ","
+(def btre-int-spec
+  {:global {:thousand-separator " "
+            :decimal-separator ""
+            :token-separator "\\^"
+            :output-separator "\t"
             }
-   :header [(line-contains? ["Monthly" "Yearly" "YoY"])
-            (line-contains? ["Inbound"] (set-keyword :traffic "inbound"))
-            (line-contains? ["Outbound"] (set-keyword :traffic "outbound"))
+   :header [(line-contains? ["TABLE" "Passengers" "Freight" "Foreign" "Port" "^^^"])
+            ;;(line-contains? ["CITY PAIRS"] (extract-month-from-header))
             (line-empty?)]
-   :input [{:index 0 :name "airline" }
-           {:index 1 :name "country" }
-           {:index 2 :name "arrint" }
-           {:index 6 :name "depint" }
+   :input [{:index 0 :name "origin" }
+           {:index 1 :name "destination" }
+;;           {:index 2 :name "inbound 2012" }
+;;           {:index 3 :name "outbound 2012" }
+;;           {:index 4 :name "total 2012"}
+           {:index 6 :name "arrint"}
+           {:index 7 :name "depint"}
+           {:index 8 :name "totint"}
            ]
-   :columns [{:name "airline" :repeat-down true}
-             {:name "country" :skip-row (cell-contains? "ALL SERVICES")}
+   :columns [{:name "origin" :skip-row (cell-contains? ["Total"])}
+             {:name "destination" :repeat-down true}
              {:name "arrint" :transform (convert-to-int)}
              {:name "depint" :transform (convert-to-int)}
-             ]
-   :output [{:name "code" :source "airline"}
+             {:name "totint" :transform (convert-to-int)}]
+             
+   :footer [(line-contains? ["Please" "^^"])
+            (line-empty?)]
+   :output [{:name "type" :value "citypair"}
+            {:name "iata" :value ""}
+            {:name "icao" :value ""}
+            {:name "origin"}
+            {:name "destination"}
+            {:name "arrint"}
+            {:name "depint"}
+            {:name "totint"}
             ]
    })
 ;;
 ;;
-;;
+;; VM
 (def aci-international "/home/pdeschacht/dev/paxparser/data/ACI/aci_international.csv")
 (def aci-worldwide "/home/pdeschacht/dev/paxparser/data/ACI/aci_worldwide.csv")
 (def albatross "/home/pdeschacht/dev/paxparser/data/Albatross/01_2008_importAirport.csv")
-(def albatross-xls "/home/pdeschacht/dev/paxparser/data/Albatross/Albatross all.xlsx")
+(def albatross-all-xls "/home/pdeschacht/dev/paxparser/data/Albatross/Albatross all.xlsx")
+
+;; home
+(def albatross-all-xls "/Users/pauldeschacht/Dropbox/dev/paxparser/data/prepax-2014-01/Albatross/2014/01/Albatross all.xlsx")
+(def btre-int-xls "/Users/pauldeschacht/Dropbox/dev/paxparser/data/prepax-2014-01/BTRE_Australia/2013/10/00_International_airline_activity.xlsx")

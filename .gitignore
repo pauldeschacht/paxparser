@@ -4,4 +4,6 @@ pom.xml
 /classes/
 /targets/
 /target/
+/data/
 .lein-deps-sum
+.nrepl-port

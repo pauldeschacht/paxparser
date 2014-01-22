@@ -1,4 +1,6 @@
-(ns paxparser.core)
+(ns paxparser.core
+  (:use [clojure.java.io])
+  (:use [dk.ative.docjure.spreadsheet]))
 ;;
 ;; helper function
 ;;
@@ -49,9 +51,12 @@
 
 (defn convert-to-int []
   (fn [ctxt value]
-    (if-let [thousand-separator (:thousand-separator ctxt)]
-      (read-string (clojure.string/replace value thousand-separator ""))
-      (read-string value))))
+    (if (not (empty? value))
+      (if-let [thousand-separator (:thousand-separator ctxt)]
+        (read-string (clojure.string/replace value thousand-separator ""))
+        (read-string value))
+      nil
+      )))
 
 (defn split-into-cells [names separator]
   (fn [ctxt value]
@@ -283,7 +288,7 @@
         converter (converter-fn (:columns config))
         process-row (process-row-fn tokenizer converter)
         
-        output-row (output-fn (:output config))
+        output-row (output-row-fn (:output config))
 
         footer? (footer?-fn (:footer config))
         ]
@@ -324,7 +329,8 @@
                     :decimal-separator "."
                     :header-lines 0
                     :converted-lines 0
-                    :footer-lines 0}
+                    :footer-lines 0
+                    :output-separator "\t"}
                    (:global spec))
    :header (:header spec)
    :input (complete-input-specs (:input spec))
@@ -334,6 +340,114 @@
    ;;   :prev-row (cycle [nil])
    :prev-row [nil nil nil nil nil nil nil nil nil nil nil nil ]
    })
+;;
+;; XLS TO CSV
+;;
+(defn xls-row-to-line [separator row]
+  (->> row
+   (cell-seq)
+   (map #(str (read-cell %)))
+   (clojure.string/join separator)
+   ))
+
+(defn xls-rows-to-line [separator rows]
+  (map #(xls-row-to-line separator %) rows))
+
+(defn excel-sheet-to-lines [sheet separator]
+  (->> sheet
+       (row-seq)
+       (xls-rows-to-line separator)
+       ))
+
+;;
+;; READ LINES FROM CSV/XLS/XLSX
+;;
+(defn get-file-extension [params]
+  (let [filename (:filename params)
+        extension (last (clojure.string/split filename #"\."))]
+    (cond
+     (= extension "xlsx") :xlsx
+     (= extension "xls")  :xls
+     (= extension "csv")  :csv
+     (= extension "tsv")  :csv
+     (= extension "txt")  :csv
+     :else :error
+     )))
+
+(defmulti read-lines
+  (fn [params]
+    (get-file-extension (params :filename)) ;;?? pass params and not (:filename params)
+    ))
+(defmethod read-lines :csv [{:keys [filename max]}]
+  (let [lines (clojure.string/split (slurp filename) #"\n")]
+    (if (nil? max)
+      lines
+      (take max lines))))
+(defmethod read-lines :xls [{:keys [filename max]}]
+  (let [workbook (load-workbook filename)
+        sheet (select-sheet 0 workbook)
+        lines (excel-sheet-to-lines sheet "^")
+        ]
+    (if (nil? max)
+      lines
+      (take max lines))))
+(defmethod read-lines :xlsx [params]
+  (let [{:keys [filename sheetname max]} params
+        workbook (load-workbook filename)
+        sheet (select-sheet sheetname workbook)
+        lines (excel-sheet-to-lines sheet "^")
+        ]
+    (if (nil? max)
+      lines
+      (take max lines))))
+(defmethod read-lines :default [& args]
+  [])
+
+
+(defn process-lines [spec lines]
+  (let [full-spec (add-defaults-to-spec spec)
+        
+        header? (header?-fn (:header full-spec))
+        
+        tokenizer (tokenizer-fn (:input full-spec))
+        converter (converter-fn (:columns full-spec))
+        process-row (process-row-fn tokenizer converter)
+
+        output-row (output-row-fn (:output full-spec))
+        
+        footer? (footer?-fn (:footer full-spec))]
+    
+    (->> {:context full-spec :lines lines}
+         (process-lines-while header? nil)
+         (process-lines-while (fn [ctxt line]
+                                (not (or (header? ctxt line)
+                                         (footer? ctxt line)))) process-row)
+         (process-lines-while footer? nil)
+         (move-lines-in-env)
+         (process-lines-while true-condition? output-row)
+         )))
+
+(defn to-csv [filename lines separator]
+  (with-open [wrtr (writer filename)]
+    (doall (map (fn [line]
+                  (->> line
+                       (map #(str (:value %)))
+                       (clojure.string/join separator)
+                       (.write wrtr))
+                  (.write wrtr "\n"))
+                lines
+                )))
+  true)
+
+
+(defn convert-file [input-filename spec output-filename]
+  (let [lines (read-lines {:filename input-filename :sheetname "Sheet1"})
+        env (process-lines spec lines)
+        converted-lines (get-in env [:context :processed-rows])
+        output-separator (get-in spec [:global :output-separator])        
+        ]
+    (to-csv output-filename converted-lines output-separator))
+  )
 
 ;;
 ;; ACI functions and specifications
@@ -351,9 +465,10 @@
 
 (def aci-spec
   {:global {:token-separator ";"
-            :thousand-separator " "
+            :thous4and-separator " "
             :decimal-separator "."}
    :header[(line-contains? ["CODE" "COUNTRY"])]
+   
    :input [{:index 0 :name "region"}
            {:index 1 :name "city-country-code" :split (split-into-cells ["name" "country"] ",")}
            {:index 2 :name "code"}
@@ -371,8 +486,7 @@
             {:name "name"}
             {:name "country"}
             {:name "tottot"}
-            {:name "increase"}
-            {:name "merged"}]
+            ]
    })
 
 (def albatross-single-year
@@ -410,6 +524,45 @@
             {:name "domtot"}
             {:name "inttot"}
             ]   })
+
+(def albatross-all-spec
+  {:global {:token-separator "\\^"
+            :thousand-separator nil
+            :decimal-separator nil
+            :output-separator "\t"
+            }
+   :header [(line-contains? ["2008 Total"] (set-version "2008"))
+            (line-contains? ["2009 Total"] (set-version "2009"))
+            (line-contains? ["2010 Total"] (set-version "2010"))
+            (line-contains? ["2010 Total"] (set-version "2011"))
+            (line-contains? ["2010 Total"] (set-version "2012"))
+            (line-contains? ["2010 Total"] (set-version "2013"))
+            ]
+   :input [{:index 1 :name "iata"}
+           {:index 2 :name "icao"}
+           {:index 3 :name "airportname"}
+           {:index 4 :name "country"}
+           {:index 5 :name "region"}
+           {:index 14 :name "tottot"}
+           {:index 15 :name "domtot"}
+           {:index 16 :name "inttot"}
+           ]
+   :columns [{:name "tottot" :transform (convert-to-int)}
+             {:name "domtot" :transform (convert-to-int)}
+             {:name "inttot" :transform (convert-to-int)}
+             ]
+   :output [{:name "type" :value "airport"}
+            {:name "iata"}
+            {:name "icao"}
+            {:name "airportname"}
+            {:name "country"}
+            {:name "region"}
+            {:name "tottot"}
+            {:name "domtot"}
+            {:name "inttot"}
+            ]
+   })
+
 
 ;; CONVERTER
 ;; :name mandatory, must exist in the input cells
@@ -455,31 +608,4 @@
 (def aci-international "/home/pdeschacht/dev/paxparser/data/ACI/aci_international.csv")
 (def aci-worldwide "/home/pdeschacht/dev/paxparser/data/ACI/aci_worldwide.csv")
 (def albatross "/home/pdeschacht/dev/paxparser/data/Albatross/01_2008_importAirport.csv")
-
-(defn read-lines [filename & [max]] 
-  (let [lines (clojure.string/split (slurp filename) #"\n")]
-    (if (nil? max)
-      lines
-      (take max lines))))
-
-(defn process-lines [spec lines]
-  (let [full-spec (add-defaults-to-spec spec)
-        
-        header? (header?-fn (:header full-spec))
-        tokenizer (tokenizer-fn (:input full-spec))
-        converter (converter-fn (:columns full-spec))
-        process-row (process-row-fn tokenizer converter)
-
-        output-row (output-row-fn (:output full-spec))
-        
-        footer? (footer?-fn (:footer full-spec))]
-    
-    (->> {:context full-spec :lines lines}
-         (process-lines-while header? nil)
-         (process-lines-while (fn [ctxt line]
-                                (not (or (header? ctxt line)
-                                         (footer? ctxt line)))) process-row)
-         (process-lines-while footer? nil)
-         (move-lines-in-env)
-         (process-lines-while true-condition? output-row)
-         )))
+(def albatross-xls "/home/pdeschacht/dev/paxparser/data/Albatross/Albatross all.xlsx")

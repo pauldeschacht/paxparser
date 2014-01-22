@@ -63,12 +63,18 @@
 
 (defn merge-into-cell [names join-separator]
   (fn [ctxt cells]
-    (let [values (map (fn [name]
-                        (filter #(= (:name %) name) cells))
-                      names)])))
+    (->> names
+         (map (fn [name] (filter #(= (:name %) name) cells)))
+         (flatten)
+         (map #(str (:value %1)))
+         (clojure.string/join join-separator)
+         )))
 ;;
 ;; generic function that processes lines while (condition? ctxt line) is true
 ;;
+(defn true-condition? [ctxt & args]
+  (merge ctxt {:result true}))
+
 (defn process-data [process ctxt data]
   (if (nil? process)
     ctxt
@@ -129,10 +135,14 @@
   (fn[ctxt line]
     (->> line
          (line-to-tokens (re-pattern (get-in ctxt [:global :token-separator]))) ;; vector of tokens (token is just a string)
-         (map #(token-to-cells ctxt %1 %2) input-specs) ;; vector of cells (cell is a hashmap)
+         (map #(token-to-cells ctxt %1 %2) input-specs)
+         ;; vector of cells
+         ;; cell is a hashmap with :index :name :value :split (and others specified in input-spec)
+         
 
          (flatten)
-         (filter #(not (nil? (:name %)))) ;; remove cells without a name
+         (filter #(not (nil? (:name %)))) ;;remove cells without a name
+         (map #(dissoc % :split))
          )))
 ;;
 ;; COLUMN CONVERTERS
@@ -152,6 +162,15 @@
         clean-specs (filter #(not (nil? (:name %))) all-specs)]
     (for [ [name specs] (group-by :name clean-specs)]
       (apply merge specs)))
+  )
+
+(defn new-cell? [input-cells column-spec]
+  (empty? (find-spec-by-name input-cells (:name column-spec))))
+
+(defn add-new-cells [column-specs input-cells]
+  (concat
+   input-cells
+   (filter #(new-cell? input-cells %) column-specs)) ;; add column-spec if not yet a cell
   )
 
 (defn skip-cell [ctxt cell]
@@ -174,6 +193,17 @@
       (merge current-cell {:value (:value previous-cell)})
       current-cell)))
 
+(defn merge-cell [ctxt cells current-cell]
+  (if-let [merge-fn (:merge current-cell)]
+    (let [value (merge-fn ctxt cells)]
+      (do
+        (merge current-cell {:value value})))
+    current-cell
+    ))
+
+(defn merge-cells [ctxt cells]
+  (map #(merge-cell ctxt cells %) cells))
+
 (defn clean-cell [cell]
   (dissoc cell :index :split :repeat-down :transform))
 
@@ -181,9 +211,12 @@
   (fn [ctxt cells] ;; returns a vector of cells
     (->> cells
          (merge-cells-with-column-specs column-specs) ;; enrich cells with config details
+         (add-new-cells column-specs)
+;;         (do-nothing "enriched cells")
          (map #(skip-cell ctxt %)) ;;
          (map #(transform-cell ctxt %))
          (map #(repeat-cell %1 %2) (:prev-row ctxt))
+         (merge-cells ctxt)
          (map #(clean-cell %1))
          )))
 ;;
@@ -199,45 +232,49 @@
 ;; OUTPUT
 ;;
 ;; merge with {:source n} where n comes from {:name n}
-(defn complete-output-spec [{:keys [name source value] output-spec}]
-  (if (nil? value)
-    (if (nil? source)
-      (merge {:source name} output-spec)
-      output-spec)
-    output-spec)
-  )
+(defn complete-output-spec [output-spec]
+  (let [{:keys [name source value]} output-spec]
+    (if (nil? value)
+      (if (nil? source)
+        (merge {:source name} output-spec)
+        output-spec)
+      output-spec)))
 
 (defn complete-output-specs [output-specs]
   (map #(complete-output-spec %) output-specs))
 
-(defn copy-value-into-output [ctxt cells {:keys [name source value]}]
-  (if (not (nil? value))
-    {:name name :value value}
-    (if (not (nil? source))
-      (let [source-cell (find-spec-by-name cells name)]
-        {:name name (:value source-cell)}
-        )
-      ))
-  )
+(defn get-value-for-output-cell [ctxt cells output-cell]
+  (let [{:keys [value source]} output-cell]
+    (if (not (nil? value))
+      value
+      (if-let [source-cell (find-spec-by-name cells source)]
+        (:value source-cell)
+        nil))))
 
-(defn copy-values-into-output [ctxt cells {:keys [name merge]}]
-  (if (not (nil? name))
-    (if-let [cell (find-cell-by-name name cells)]
-      (copy-value-into-output ctxt cells output-spec)
-      {:name name :value nil})
-    (if (not (nil? merge))
-      (merge-output-values ctxt cells merge)
-      {:name name :value nil}))
-  )
+(defn copy-value-into-output-cell [ctxt cells output-cell]
+  (if-let [value (get-value-for-output-cell ctxt cells output-cell)]
+    (merge output-cell {:value value})
+    output-cell))
 
-(defn output-fn [output-specs]
-  (let [full-output-specs (complete-output-specs output-specs)])
-  (fn [ctxt cells]
-    (map #(copy-values-into-output ctxt cells %) cells)))
+;; cells is a row
+(defn output-row-fn [output-specs]
+  (let [full-output-specs (complete-output-specs output-specs)]
+    (fn [ctxt cells]
+      (->>
+       (map #(copy-value-into-output-cell ctxt cells %) full-output-specs)
+       (map #(dissoc % :source))
+       ))))
 
 ;;
 ;; PROCESS THE LINES
 ;;
+(defn move-lines-in-env [env]
+  (update-in
+   (merge env {:lines (get-in env [:context :processed-rows])})
+   [:context :processed-rows]
+   empty
+   )
+  )
 (defn process [config lines]
   (let [
         header? (header?-fn (:header config))
@@ -246,7 +283,7 @@
         converter (converter-fn (:columns config))
         process-row (process-row-fn tokenizer converter)
         
-        output (output-fn (:output config))
+        output-row (output-fn (:output config))
 
         footer? (footer?-fn (:footer config))
         ]
@@ -255,6 +292,8 @@
          (process-lines-while header? nil)
          (process-lines-while (not (or (header? footer?))) process-row )
          (process-lines-while footer? nil)
+         (move-lines-in-env)
+         (process-lines-while true-condition? output-row)
          )
     
     ))
@@ -323,15 +362,54 @@
            ]
    :columns [{:name "tottot" :transform (aci-pax-to-int)}
              {:name "code" :transform (aci-trim)}
-             {:name "country" :transform (aci-trim)}]
+             {:name "country" :transform (aci-trim)}
+             {:name "name" :transform (aci-trim)}
+             {:name "merged" :merge (merge-into-cell ["name" "country" "code"] "*")}
+             ]
    :output [{:name "type" :value "airport"}
             {:name "code"}
             {:name "name"}
-            {:name "country" ;; :merge (merge-cells ["name" "country"] "-")
-             }
+            {:name "country"}
             {:name "tottot"}
-            {:name "increase"}]
+            {:name "increase"}
+            {:name "merged"}]
    })
+
+(def albatross-single-year
+  {:global {:token-separator ";"
+            :thousand-separator nil
+            :decimal-separator nil         
+            }
+   :header [(line-contains? ["2008 Total"] (set-version "2008"))
+            (line-contains? ["2009 Total"] (set-version "2009"))
+            (line-contains? ["2010 Total"] (set-version "2010"))
+            (line-contains? ["2010 Total"] (set-version "2011"))
+            (line-contains? ["2010 Total"] (set-version "2012"))
+            (line-contains? ["2010 Total"] (set-version "2013"))
+            ]
+   :input [{:index 1 :name "iata"}
+           {:index 2 :name "icao"}
+           {:index 3 :name "airportname"}
+           {:index 4 :name "country"}
+           {:index 5 :name "region"}
+           {:index 10 :name "tottot"}
+           {:index 11 :name "domtot"}
+           {:index 11 :name "inttot"}
+           ]
+   :columns [{:name "tottot" :transform (convert-to-int)}
+             {:name "domtot" :transform (convert-to-int)}
+             {:name "inttot" :transform (convert-to-int)}
+             ]
+   :output [{:name "type" :value "airport"}
+            {:name "iata"}
+            {:name "icao"}
+            {:name "airportname"}
+            {:name "country"}
+            {:name "region"}
+            {:name "tottot"}
+            {:name "domtot"}
+            {:name "inttot"}
+            ]   })
 
 ;; CONVERTER
 ;; :name mandatory, must exist in the input cells
@@ -374,15 +452,26 @@
 ;;
 ;;
 ;;
-(defn read-lines [filename]
-  (clojure.string/split (slurp filename) #"\n"))
+(def aci-international "/home/pdeschacht/dev/paxparser/data/ACI/aci_international.csv")
+(def aci-worldwide "/home/pdeschacht/dev/paxparser/data/ACI/aci_worldwide.csv")
+(def albatross "/home/pdeschacht/dev/paxparser/data/Albatross/01_2008_importAirport.csv")
 
-(defn process-aci [lines]
-  (let [full-spec (add-defaults-to-spec aci-international-spec)
+(defn read-lines [filename & [max]] 
+  (let [lines (clojure.string/split (slurp filename) #"\n")]
+    (if (nil? max)
+      lines
+      (take max lines))))
+
+(defn process-lines [spec lines]
+  (let [full-spec (add-defaults-to-spec spec)
+        
         header? (header?-fn (:header full-spec))
         tokenizer (tokenizer-fn (:input full-spec))
         converter (converter-fn (:columns full-spec))
         process-row (process-row-fn tokenizer converter)
+
+        output-row (output-row-fn (:output full-spec))
+        
         footer? (footer?-fn (:footer full-spec))]
     
     (->> {:context full-spec :lines lines}
@@ -390,4 +479,7 @@
          (process-lines-while (fn [ctxt line]
                                 (not (or (header? ctxt line)
                                          (footer? ctxt line)))) process-row)
-         (process-lines-while footer? nil))))
+         (process-lines-while footer? nil)
+         (move-lines-in-env)
+         (process-lines-while true-condition? output-row)
+         )))

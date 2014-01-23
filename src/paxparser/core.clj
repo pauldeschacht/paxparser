@@ -1,7 +1,7 @@
 (ns paxparser.core
   (:use [clojure.java.io])
   (:use [dk.ative.docjure.spreadsheet])
-  (:import (org.apache.poi.ss.usermodel Cell DataFormatter DateUtil)))
+  (:import (org.apache.poi.ss.usermodel Row Cell DataFormatter DateUtil)))
 ;;
 ;; helper function
 ;;
@@ -81,6 +81,41 @@
          (clojure.string/join join-separator)
          )))
 ;;
+;; extract values from XLS(X)
+;;
+(defn xls-cell-to-value [^Cell cell]
+  (-> (DataFormatter.)
+      (.formatCellValue cell)))
+
+(defn xls-row-to-tokens [^Row row]
+  (->> (map #(.getCell row % Row/RETURN_BLANK_AS_NULL) (range 0 (.getLastCellNum row)))
+       (map #(if (nil? %) nil (xls-cell-to-value %)))))
+
+(defn xls-row-to-line [^Row row]
+  (->> row
+       (xls-row-to-tokens)
+       (filter #(not (nil? %)))
+       (clojure.string/join " ")))
+;;
+;; multi method row-to-string and row-to-tokens
+;;
+(defmulti row-to-string (fn [data] (class data)))
+(defmethod row-to-string java.lang.String [data]
+  (str data))
+(defmethod row-to-string org.apache.poi.hssf.usermodel.HSSFRow [data]
+  (xls-row-to-line data))
+
+(defmethod row-to-string :default [data]
+  "")
+
+(defmulti row-to-tokens (fn [data & args] (class data)))
+(defmethod row-to-tokens java.lang.String [data re-separator]
+  (clojure.string/split data re-separator))
+(defmethod row-to-tokens org.apache.poi.hssf.usermodel.HSSFRow [data & args]
+  (xls-row-to-tokens data))
+(defmethod row-to-tokens :default [data & args]
+  [])
+;;
 ;; generic function that processes lines while (condition? ctxt line) is true
 ;;
 (defn true-condition? [ctxt & args]
@@ -89,9 +124,10 @@
 (defn process-data [process ctxt data]
   (if (nil? process)
     ctxt
-    (let [processed-data (process ctxt data)]
+    (if-let [processed-data (process ctxt data)]
       (merge ctxt {:processed-rows (conj (:processed-rows ctxt) processed-data)
-                   :prev-row processed-data}))))
+                   :prev-row processed-data})
+      ctxt)))
 
 (defn process-lines-while [condition? process {:keys [lines context]}]
   (if (empty? lines)
@@ -103,41 +139,57 @@
           (recur condition? process {:lines (rest lines) :context context**}))
         ))))
 ;;
-;; HEADER
+;; HEADER LINE ?
 ;;
 (defn header?-fn [conditions]
-  (fn [ctxt line]
-    (let [ctxts (map #(% ctxt line) conditions) ;list of separate context'
-          final-result (true? (some #(true? (:result %)) ctxts)) ;; true or false
-          ctxt* (apply merge {} ctxts)
-          _ (println "header? " final-result)
-          ]
-      (update-in
-       (merge ctxt* {:result final-result})
-        [:global :header-lines]
-        inc
-        )
-      )))
+  (if (empty? conditions)
+    (fn [ctxt line]
+      (merge ctxt {:result false}))
+    (fn [ctxt line]
+      (let [line* (row-to-string line)
+            ctxts (map #(% ctxt line*) conditions) ;list of separate context'
+            final-result (true? (some #(true? (:result %)) ctxts)) ;; true or false
+            ctxt* (apply merge {} ctxts)
+            ]
+        (update-in
+         (merge ctxt* {:result final-result})
+         [:global :header-lines]
+         inc
+         )
+        ))))
 ;;
-;; FOOTER
+;; FOOTER LINE ?
 ;;
 (defn footer?-fn [conditions]
+  (if (empty? conditions)
+    (fn [ctxt line]
+      (merge ctxt {:result false}))
+    (fn [ctxt line]
+      (let [line* (row-to-string line)
+            ctxts (map #(% ctxt line*) conditions) ;list of separate context'
+            final-result (true? (some #(true? (:result %)) ctxts)) ;; true or false
+            ctxt* (apply merge {} ctxts)
+            ]
+        (update-in
+         (merge ctxt* {:result final-result})
+         [:global :footer-lines]
+         inc)))))
+;;
+;; DATA LINE ?
+;;
+(defn data?-fn [header? footer?]
   (fn [ctxt line]
-    (let [ctxts (map #(% ctxt line) conditions) ;list of separate context'
-          final-result (true? (some #(true? (:result %)) ctxts)) ;; true or false
-          ctxt* (apply merge {} ctxts)
-          _ (println "footer? " final-result)
-          ]
-      (update-in
-       (merge ctxt* {:result final-result})
-       [:global :header-lines]
-       inc
-       ))))
+    (let [ctxt* (footer? ctxt line)
+          footer-result (:result ctxt*)]
+      (if (true? footer-result)
+        (merge ctxt {:result false})
+        (merge ctxt {:result true})))))
+  
 ;;
 ;; TOKENIZER
 ;;
 (defn line-to-tokens [re-separator line]
-  (clojure.string/split line re-separator))
+  (row-to-tokens line re-separator))
 
 (defn token-to-cells [ctxt input-spec token]
   (if-let [split-fn (:split input-spec)]
@@ -147,14 +199,12 @@
 (defn tokenizer-fn [input-specs]
   (fn[ctxt line]
     (->> line
-         (do-nothing "line: ")
+;;         (do-nothing "line: ")
          (line-to-tokens (re-pattern (get-in ctxt [:global :token-separator]))) ;; vector of tokens (token is just a string)
-
+;;         (do-nothing "Tokens:")
          (map #(token-to-cells ctxt %1 %2) input-specs)
          ;; vector of cells
          ;; cell is a hashmap with :index :name :value :split (and others specified in input-spec)
-         
-
          (flatten)
          (filter #(not (nil? (:name %)))) ;;remove cells without a name
          (map #(dissoc % :split))
@@ -176,8 +226,7 @@
   (let [all-specs (concat specs1 specs2)
         clean-specs (filter #(not (nil? (:name %))) all-specs)]
     (for [ [name specs] (group-by :name clean-specs)]
-      (apply merge specs)))
-  )
+      (apply merge specs))))
 
 (defn new-cell? [input-cells column-spec]
   (empty? (find-spec-by-name input-cells (:name column-spec))))
@@ -186,12 +235,14 @@
   (concat
    input-cells
    (filter #(new-cell? input-cells %) column-specs)) ;; add column-spec if not yet a cell
-  )
+)
 
 (defn skip-cell [ctxt cell]
   (if-let [skip-fn (:skip-row cell)]
-    (do
-;;      (println "skip-cell with value " (:value cell) " is " (skip-fn ctxt (:value cell)))
+    (let [result (skip-fn ctxt (:value cell))]
+
+      ;; (if (true? result)
+      ;;   (println "skip-cell for value" (:value cell)))
       (merge cell {:skip (skip-fn ctxt (:value cell))}))
     cell))
 
@@ -252,7 +303,8 @@
     (->> line
          (tokenizer ctxt) ;; line --> vector of tokens --> vector of basic cells
          (converter ctxt) ;; vector basic cells --> vector of enriched/transformed cells
-;;         (do-nothing "after converter")
+         ;;         (do-nothing "after converter")
+;;         (do-nothing "before skipping")
          (skip-row) ;; nil is one of the cells has the :skip flag set to true
          ))) 
 ;;
@@ -355,6 +407,7 @@
                     :output-separator "\t"}
                    (:global spec))
    :header (:header spec)
+   :footer (:footer spec)
    :input (complete-input-specs (:input spec))
    :columns (:columns spec)
    :output (:output spec)
@@ -362,12 +415,7 @@
    ;;   :prev-row (cycle [nil])
    :prev-row [nil nil nil nil nil nil nil nil nil nil nil nil ]
    })
-;;
-;; XLS TO CSV
-;;
-(defn xls-cell-to-string [^Cell cell]
-  (-> (DataFormatter.)
-      (.formatCellValue cell))
+
   
   ;; (let [cell-type (.getCellType cell)]
   ;;   (cond
@@ -378,22 +426,20 @@
   ;;                                             (.formatCellValue cell)
   ;;                                             )))
 
-  )
 
-(defn xls-row-to-line [separator row]
-  (->> row
-   (cell-seq)
-   (map #(xls-cell-to-string %))
-   (clojure.string/join separator)
-   ))
+;; (defn xls-row-to-line [separator row]
+;;   (->> row
+;;    (cell-seq)
+;;    (map #(xls-cell-to-string %))
+;;    (clojure.string/join separator)
+;;    ))
 
-(defn xls-rows-to-line [separator rows]
-  (map #(xls-row-to-line separator %) rows))
+;; (defn xls-rows-to-line [rows]
+;;    (map #(xls-row-to-line %) rows))
 
-(defn excel-sheet-to-lines [sheet separator]
+(defn excel-sheet-to-lines [sheet]
   (->> sheet
        (row-seq)
-       (xls-rows-to-line separator)
        ))
 
 ;;
@@ -404,7 +450,7 @@
         extension (last (clojure.string/split filename #"\."))]
     (cond
      (= extension "xlsx") :xlsx
-     (= extension "xls")  :xls
+     (= extension "xls")  :xlsx
      (= extension "csv")  :csv
      (= extension "tsv")  :csv
      (= extension "txt")  :csv
@@ -423,7 +469,7 @@
 (defmethod read-lines :xls [{:keys [filename max]}]
   (let [workbook (load-workbook filename)
         sheet (select-sheet 0 workbook)
-        lines (excel-sheet-to-lines sheet "^")
+        lines (excel-sheet-to-lines sheet)
         ]
     (if (nil? max)
       lines
@@ -432,7 +478,7 @@
   (let [{:keys [filename sheetname max]} params
         workbook (load-workbook filename)
         sheet (select-sheet sheetname workbook)
-        lines (excel-sheet-to-lines sheet "^")
+        lines (excel-sheet-to-lines sheet)
         ]
     (if (nil? max)
       lines
@@ -452,13 +498,14 @@
 
         output-row (output-row-fn (:output full-spec))
         
-        footer? (footer?-fn (:footer full-spec))]
+        footer? (footer?-fn (:footer full-spec))
+
+        data? (data?-fn header? footer?)
+        ]
     
     (->> {:context full-spec :lines lines}
          (process-lines-while header? nil)
-         (process-lines-while (fn [ctxt line]
-                                (not (or {:result (footer? ctxt line)}
-                                         {:result  (header? ctxt line)}))) process-row)
+         (process-lines-while data? process-row)
          (process-lines-while footer? nil)
          (move-lines-in-env)
          (process-lines-while true-condition? output-row)
@@ -625,14 +672,13 @@
             :token-separator "\\^"
             :output-separator "\t"
             }
-   :header [(line-contains? ["TABLE" "Passengers" "Freight" "Foreign" "Port" "^^^"])
-            ;;(line-contains? ["CITY PAIRS"] (extract-month-from-header))
+   :header [(line-contains? ["TABLE" "Passengers" "Freight" "Foreign" "Inbound" "Outbound"])
             (line-empty?)]
    :input [{:index 0 :name "origin" }
            {:index 1 :name "destination" }
-;;           {:index 2 :name "inbound 2012" }
-;;           {:index 3 :name "outbound 2012" }
-;;           {:index 4 :name "total 2012"}
+           {:index 2 :name "inbound 2012" }
+           {:index 3 :name "outbound 2012" }
+           {:index 4 :name "total 2012"}
            {:index 6 :name "arrint"}
            {:index 7 :name "depint"}
            {:index 8 :name "totint"}
@@ -643,7 +689,7 @@
              {:name "depint" :transform (convert-to-int)}
              {:name "totint" :transform (convert-to-int)}]
              
-   :footer [(line-contains? ["Please" "^^"])
+   :footer [(line-contains? ["Please"])
             (line-empty?)]
    :output [{:name "type" :value "citypair"}
             {:name "iata" :value ""}
@@ -655,6 +701,58 @@
             {:name "totint"}
             ]
    })
+
+(def destatis-dom-spec
+  {:global {:thousand-separator " "
+            :decimal-separator ""
+            :output-separator "\t"
+            }
+   :header [(line-contains? ["Gewerblicher" "Passengier" "Verkehr" "Luftverkehr" "Streckenzielflughafen" "von" "Streckenherkunfts-" "flughäfen" "Anzahl" "Deutschland insgesamt" "Hauptverkehrsflughäfen"])
+            (line-empty?)]
+   :input [{:index 0 :name "origin" }
+           {:index 1 :name "domttot" }
+           {:index 2 :name "mainairports" }
+           {:index 3 :name "Berlin_Schonefeld" }
+           {:index 5 :name "Berlin_Tegel"}
+           {:index 6 :name "Bremen"}
+           {:index 7 :name "Dortmund"}
+           {:index 9 :name "Dresden"}
+           {:index 10 :name "Dusseldorf"}
+           ]
+   :columns [{:name "origin" :skip-row (cell-contains? ["Total"])}
+             {:name "destination" :repeat-down true}
+             {:name "Berlin_Schonefeld" :transform (convert-to-int)}
+             {:name "Berlin_Tegel" :transform (convert-to-int)}
+             {:name "Bremen" :transform (convert-to-int)}
+             {:name "Dortmund" :transform (convert-to-int)}
+             {:name "Dusseldorf" :transform (convert-to-int)}
+             ]
+             
+   :footer [(line-contains? ["Please"])
+            (line-empty?)]
+   :output [{:name "type" :value "citypair"}
+            {:name "iata" :value ""}
+            {:name "icao" :value ""}
+            {:name "origin"}
+            {:name "destination"}
+            {:name "arrint"}
+            {:name "depint"}
+            {:name "totint"}
+            ]
+   })
+
+:outputs [{:output [{:name "type" :value "citypair"}
+                     {:name "origin" :source "origin"}
+                     {:name "destination" :value "Berlin 1"}
+                     {:name "domtot" :source "domtot_Berlin_1"}]
+           }
+          {:output [{:name "type" :value "citypair"}
+                     {:name "origin" :source "origin"}
+                     {:name "destination" :source "Berlin 2"}
+                     {:name "domtot" :source "domtot_Berlin_2"}
+                     ]}
+          ]
+
 ;;
 ;;
 ;; VM
@@ -662,7 +760,10 @@
 (def aci-worldwide "/home/pdeschacht/dev/paxparser/data/ACI/aci_worldwide.csv")
 (def albatross "/home/pdeschacht/dev/paxparser/data/Albatross/01_2008_importAirport.csv")
 (def albatross-all-xls "/home/pdeschacht/dev/paxparser/data/Albatross/Albatross all.xlsx")
+(def btre-int-xls "/home/pdeschacht/MyDocuments/prepax-2014-01/BTRE/2013/10/International_airline_activity_1309_Tables.xls")
 
 ;; home
-(def albatross-all-xls "/Users/pauldeschacht/Dropbox/dev/paxparser/data/prepax-2014-01/Albatross/2014/01/Albatross all.xlsx")
-(def btre-int-xls "/Users/pauldeschacht/Dropbox/dev/paxparser/data/prepax-2014-01/BTRE_Australia/2013/10/00_International_airline_activity.xlsx")
+;;(def albatross-all-xls "/Users/pauldeschacht/Dropbox/dev/paxparser/data/prepax-2014-01/Albatross/2014/01/Albatross all.xlsx")
+;;(def btre-int-xls
+;"/Users/pauldeschacht/Dropbox/dev/paxparser/data/prepax-2014-01/BTRE_Australia/2013/10/00_International_airline_activity.xlsx")
+

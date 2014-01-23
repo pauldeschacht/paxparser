@@ -104,7 +104,6 @@
   (str data))
 (defmethod row-to-string org.apache.poi.hssf.usermodel.HSSFRow [data]
   (xls-row-to-line data))
-
 (defmethod row-to-string :default [data]
   "")
 
@@ -125,8 +124,12 @@
   (if (nil? process)
     ctxt
     (if-let [processed-data (process ctxt data)]
-      (merge ctxt {:processed-rows (conj (:processed-rows ctxt) processed-data)
-                   :prev-row processed-data})
+      (if (map? (first processed-data))
+        (merge ctxt {:processed-rows (conj (:processed-rows ctxt) processed-data)
+                     :prev-row processed-data})
+        (merge ctxt {:processed-rows (apply conj (:processed-rows ctxt) processed-data)
+                     :prev-row nil}))
+      
       ctxt)))
 
 (defn process-lines-while [condition? process {:keys [lines context]}]
@@ -344,6 +347,13 @@
        (map #(dissoc % :source))
        ))))
 
+(defn outputs-row-fn [multi-output-specs]
+  (let [multi-full-output-specs (map #(complete-output-specs %) multi-output-specs)
+        multi-output-row-fn (map #(output-row-fn %) multi-full-output-specs)]
+    (fn [ctxt cells]
+      (map #(%1 ctxt cells) multi-output-row-fn) ;; [(output1 cells) (output2 cells) ..]
+       )))
+
 ;;
 ;; PROCESS THE LINES
 ;;
@@ -411,6 +421,7 @@
    :input (complete-input-specs (:input spec))
    :columns (:columns spec)
    :output (:output spec)
+   :outputs (:outputs spec)
    :processed-rows []
    ;;   :prev-row (cycle [nil])
    :prev-row [nil nil nil nil nil nil nil nil nil nil nil nil ]
@@ -496,7 +507,9 @@
         converter (converter-fn (:columns full-spec))
         process-row (process-row-fn tokenizer converter)
 
-        output-row (output-row-fn (:output full-spec))
+        output-row (if (nil? (:outputs full-spec))
+                     (output-row-fn (:output full-spec))
+                     (outputs-row-fn (:outputs full-spec)))
         
         footer? (footer?-fn (:footer full-spec))
 
@@ -676,12 +689,12 @@
             (line-empty?)]
    :input [{:index 0 :name "origin" }
            {:index 1 :name "destination" }
-           {:index 2 :name "inbound 2012" }
-           {:index 3 :name "outbound 2012" }
-           {:index 4 :name "total 2012"}
-           {:index 6 :name "arrint"}
-           {:index 7 :name "depint"}
-           {:index 8 :name "totint"}
+           {:index 2 :name "arrint 2012" }
+           {:index 3 :name "depint 2012" }
+           {:index 4 :name "totint 2012"}
+           {:index 6 :name "arrint 2013"}
+           {:index 7 :name "depint 2013"}
+           {:index 8 :name "totint 2013"}
            ]
    :columns [{:name "origin" :skip-row (cell-contains? ["Total"])}
              {:name "destination" :repeat-down true}
@@ -691,67 +704,94 @@
              
    :footer [(line-contains? ["Please"])
             (line-empty?)]
-   :output [{:name "type" :value "citypair"}
-            {:name "iata" :value ""}
-            {:name "icao" :value ""}
-            {:name "origin"}
-            {:name "destination"}
-            {:name "arrint"}
-            {:name "depint"}
-            {:name "totint"}
-            ]
+   :outputs [
+             [{:name "type" :value "citypair"}
+              {:name "year" :value "2012"}
+              {:name "iata" :value ""}
+              {:name "icao" :value ""}
+              {:name "origin"}
+              {:name "destination"}
+              {:name "arrint 2012"}
+              {:name "depint 2012"}
+              {:name "totint 2012"}
+              ]
+             [{:name "type" :value "citypair"}
+              {:name "year" :value "2013"}
+              {:name "iata" :value ""}
+              {:name "icao" :value ""}
+              {:name "origin"}
+              {:name "destination"}
+              {:name "arrint 2013"}
+              {:name "depint 2013"}
+              {:name "totint 2013"}
+
+              ]
+             ]
    })
+
+(defn destatis-convert-to-int []
+  (fn [ctxt value]
+    (if (not (empty? value))
+      (if (= (clojure.string/trim value) "-")
+        nil
+        (if-let [thousand-separator (:thousand-separator ctxt)]
+          (read-string (clojure.string/replace value thousand-separator ""))
+          (read-string value)))
+      nil
+      )))
+  
 
 (def destatis-dom-spec
   {:global {:thousand-separator " "
             :decimal-separator ""
             :output-separator "\t"
             }
-   :header [(line-contains? ["Gewerblicher" "Passengier" "Verkehr" "Luftverkehr" "Streckenzielflughafen" "von" "Streckenherkunfts-" "flughäfen" "Anzahl" "Deutschland insgesamt" "Hauptverkehrsflughäfen"])
+   :header [(line-contains? ["Gewerblicher" "Passagier" "Verkehr" "Luftverkehr" "Streckenzielflughafen" "von" "Streckenherkunfts-" "flughäfen" "Anzahl" "Deutschland insgesamt" "Hauptverkehrsflughäfen"])
             (line-empty?)]
    :input [{:index 0 :name "origin" }
            {:index 1 :name "domttot" }
            {:index 2 :name "mainairports" }
            {:index 3 :name "Berlin_Schonefeld" }
-           {:index 5 :name "Berlin_Tegel"}
-           {:index 6 :name "Bremen"}
-           {:index 7 :name "Dortmund"}
+           {:index 4 :name "Berlin_Tegel"}
+           {:index 5 :name "Bremen"}
+           {:index 6 :name "Dortmund"}
            {:index 9 :name "Dresden"}
            {:index 10 :name "Dusseldorf"}
            ]
    :columns [{:name "origin" :skip-row (cell-contains? ["Total"])}
-             {:name "destination" :repeat-down true}
              {:name "Berlin_Schonefeld" :transform (convert-to-int)}
-             {:name "Berlin_Tegel" :transform (convert-to-int)}
-             {:name "Bremen" :transform (convert-to-int)}
-             {:name "Dortmund" :transform (convert-to-int)}
-             {:name "Dusseldorf" :transform (convert-to-int)}
+             {:name "Berlin_Tegel" :transform (destatis-convert-to-int)}
+             {:name "Bremen" :transform (destatis-convert-to-int)}
+             {:name "Dortmund" :transform (destatis-convert-to-int)}
+             {:name "Dusseldorf" :transform (destatis-convert-to-int)}
              ]
              
-   :footer [(line-contains? ["Please"])
-            (line-empty?)]
-   :output [{:name "type" :value "citypair"}
-            {:name "iata" :value ""}
-            {:name "icao" :value ""}
-            {:name "origin"}
-            {:name "destination"}
-            {:name "arrint"}
-            {:name "depint"}
-            {:name "totint"}
-            ]
+   :footer [(line-empty?)]
+   
+   :outputs [
+             [{:name "type" :value "citypair"}
+              {:name "origin" :source "origin"}
+              {:name "destination" :value "Berlin Schonefeld"}
+              {:name "domtot" :source "Berlin_Schonefeld"}]
+             
+             [{:name "type" :value "citypair"}
+              {:name "origin" :source "origin"}
+              {:name "destination" :value "Berlin Tegel"}
+              {:name "domtot" :source "Berlin_Tegel"}
+              ]
+             [{:name "type" :value "citypair"}
+              {:name "origin" :source "origin"}
+              {:name "destination" :value "Bremen"}
+              {:name "domtot" :source "Bremen"}
+              ]
+             [{:name "type" :value "citypair"}
+              {:name "origin" :source "origin"}
+              {:name "destination" :value "Dortmund"}
+              {:name "domtot" :source "Dortmund"}
+              ]
+          ]
    })
 
-:outputs [{:output [{:name "type" :value "citypair"}
-                     {:name "origin" :source "origin"}
-                     {:name "destination" :value "Berlin 1"}
-                     {:name "domtot" :source "domtot_Berlin_1"}]
-           }
-          {:output [{:name "type" :value "citypair"}
-                     {:name "origin" :source "origin"}
-                     {:name "destination" :source "Berlin 2"}
-                     {:name "domtot" :source "domtot_Berlin_2"}
-                     ]}
-          ]
 
 ;;
 ;;
@@ -762,8 +802,8 @@
 (def albatross-all-xls "/home/pdeschacht/dev/paxparser/data/Albatross/Albatross all.xlsx")
 (def btre-int-xls "/home/pdeschacht/MyDocuments/prepax-2014-01/BTRE/2013/10/International_airline_activity_1309_Tables.xls")
 
-;; home
-;;(def albatross-all-xls "/Users/pauldeschacht/Dropbox/dev/paxparser/data/prepax-2014-01/Albatross/2014/01/Albatross all.xlsx")
-;;(def btre-int-xls
-;"/Users/pauldeschacht/Dropbox/dev/paxparser/data/prepax-2014-01/BTRE_Australia/2013/10/00_International_airline_activity.xlsx")
+;;home
 
+(def albatross-all-xls "/Users/pauldeschacht/Dropbox/dev/paxparser/data/prepax-2014-01/Albatross/2014/01/Albatross all.xlsx")
+(def btre-int-xls "/Users/pauldeschacht/Dropbox/dev/paxparser/data/prepax-2014-01/BTRE_Australia/2013/10/International_airline_activity_1309_Tables.xls")
+(def destatis-xls "/Users/pauldeschacht/Dropbox/dev/paxparser/data/prepax-2014-01/Destatis/2013/09/Luftverkehr2080600131095_small.xls")

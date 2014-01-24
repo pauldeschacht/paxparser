@@ -47,7 +47,7 @@
 
 (defn line-empty? [& body]
   (fn [ctxt line]
-    (if (empty? line)
+    (if (empty? (clojure.string/trim line))
       (merge ctxt {:result true})
       (merge ctxt {:result false}))))
 
@@ -344,6 +344,7 @@
     (fn [ctxt cells]
       (->>
        (map #(copy-value-into-output-cell ctxt cells %) full-output-specs)
+       ;; filter out the row if a filter is defined 
        (map #(dissoc % :source))
        ))))
 
@@ -564,25 +565,25 @@
 
 (def aci-spec
   {:global {:token-separator ";"
-            :thous4and-separator " "
+            :thousand-separator " "
             :decimal-separator "."}
-   :header[(line-contains? ["CODE" "COUNTRY"])]
    
+   :header[(line-contains? ["CODE" "COUNTRY"])
+           ]
    :input [{:index 0 :name "region"}
-           {:index 1 :name "city-country-code" :split (split-into-cells ["name" "country"] ",")}
-           {:index 2 :name "code"}
+           {:index 1 :name "city-country-code" :split (split-into-cells ["city" "country"] ",")}
+           {:index 2 :name "iata"}
            {:index 3 :name "tottot"}
-           {:index 4 :name "increase"}
            ]
    :columns [{:name "tottot" :transform (aci-pax-to-int)}
-             {:name "code" :transform (aci-trim)}
+             {:name "city" :transform (aci-trim)}
              {:name "country" :transform (aci-trim)}
              {:name "name" :transform (aci-trim)}
-             {:name "merged" :merge (merge-into-cell ["name" "country" "code"] "*")}
              ]
    :output [{:name "type" :value "airport"}
-            {:name "code"}
-            {:name "name"}
+            {:name "iata"}
+            {:name "city"}
+            {:name "region"}
             {:name "country"}
             {:name "tottot"}
             ]
@@ -663,19 +664,6 @@
    })
 
 
-;; CONVERTER
-;; :name mandatory, must exist in the input cells
-;; :transform; function that will transform the value (defined as string)
-;; :skip; if this function returns true, the complete row will be ignored
-;; :repeat: if field is true and the value is empty in the cell, the value will be copied from previous row
- 
-;; OUTPUT
-;;  :name mandatory, used to respect sequence in the output file
-;;  :value val  --> hardcoded value
-;;  :source s   --> find value in converted cell with the name s
-;;  :merge      --> function that combines different converter cells
-;;
-
 ;;
 ;; btre international config
 ;;
@@ -739,7 +727,14 @@
           (read-string value)))
       nil
       )))
-  
+
+(defn create-destatis-outputs []
+  (map #(vector {:name "type" :value "citypair"}
+                {:name "origin" :source "origin"}
+                {:name "destination" :value %1}
+                {:name "domtot" :source %1})
+          ["Berlin_Schonefeld" "Berlin_Tegel" "Bremem" "Dortmund" "Dresden" "Dusseldorf" "Frankfurt" "Friedrichs" "Hahn" "Hamburg" "Hannover" "Karlsruhe" "Koln"
+           "Leipzig" "Memmingen" ]))
 
 (def destatis-dom-spec
   {:global {:thousand-separator " "
@@ -757,6 +752,16 @@
            {:index 6 :name "Dortmund"}
            {:index 9 :name "Dresden"}
            {:index 10 :name "Dusseldorf"}
+           {:index 11 :name "Erfurt"}
+           {:index 12 :name "Frankfurt"}
+           {:index 13 :name "Friedrichs"}
+           {:index 14 :name "Hahn"}
+           {:index 15 :name "Hamburg"}
+           {:index 16 :name "Hannover"}
+           {:index 19 :name "Karlsruhe"}
+           {:index 20 :name "Koln"}
+           {:index 21 :name "Leipzig"}
+           {:index 22 :name "Memmingen"}
            ]
    :columns [{:name "origin" :skip-row (cell-contains? ["Total"])}
              {:name "Berlin_Schonefeld" :transform (convert-to-int)}
@@ -768,28 +773,7 @@
              
    :footer [(line-empty?)]
    
-   :outputs [
-             [{:name "type" :value "citypair"}
-              {:name "origin" :source "origin"}
-              {:name "destination" :value "Berlin Schonefeld"}
-              {:name "domtot" :source "Berlin_Schonefeld"}]
-             
-             [{:name "type" :value "citypair"}
-              {:name "origin" :source "origin"}
-              {:name "destination" :value "Berlin Tegel"}
-              {:name "domtot" :source "Berlin_Tegel"}
-              ]
-             [{:name "type" :value "citypair"}
-              {:name "origin" :source "origin"}
-              {:name "destination" :value "Bremen"}
-              {:name "domtot" :source "Bremen"}
-              ]
-             [{:name "type" :value "citypair"}
-              {:name "origin" :source "origin"}
-              {:name "destination" :value "Dortmund"}
-              {:name "domtot" :source "Dortmund"}
-              ]
-          ]
+   :outputs (create-destatis-outputs)
    })
 
 
@@ -801,9 +785,11 @@
 (def albatross "/home/pdeschacht/dev/paxparser/data/Albatross/01_2008_importAirport.csv")
 (def albatross-all-xls "/home/pdeschacht/dev/paxparser/data/Albatross/Albatross all.xlsx")
 (def btre-int-xls "/home/pdeschacht/MyDocuments/prepax-2014-01/BTRE/2013/10/International_airline_activity_1309_Tables.xls")
+(def destatis-xls "/home/pdeschacht/MyDocuments/prepax-2014-01/Destatis/2013/09/Luftverkehr2080600131095.xls")
 
 ;;home
 
-(def albatross-all-xls "/Users/pauldeschacht/Dropbox/dev/paxparser/data/prepax-2014-01/Albatross/2014/01/Albatross all.xlsx")
-(def btre-int-xls "/Users/pauldeschacht/Dropbox/dev/paxparser/data/prepax-2014-01/BTRE_Australia/2013/10/International_airline_activity_1309_Tables.xls")
-(def destatis-xls "/Users/pauldeschacht/Dropbox/dev/paxparser/data/prepax-2014-01/Destatis/2013/09/Luftverkehr2080600131095_small.xls")
+;;(def albatross-all-xls "/Users/pauldeschacht/Dropbox/dev/paxparser/data/prepax-2014-01/Albatross/2014/01/Albatross all.xlsx")
+;;(def btre-int-xls "/Users/pauldeschacht/Dropbox/dev/paxparser/data/prepax-2014-01/BTRE_Australia/2013/10/International_airline_activity_1309_Tables.xls")
+;;(def destatis-xls "/Users/pauldeschacht/Dropbox/dev/paxparser/data/prepax-2014-01/Destatis/2013/09/Luftverkehr2080600131095_small.xlsx")
+

@@ -3,7 +3,7 @@
   (:use [dk.ative.docjure.spreadsheet])
   (:import (org.apache.poi.ss.usermodel Row Cell DataFormatter DateUtil)))
 ;;
-;; helper function
+;; debug function
 ;;
 (defn- do-nothing [text data]
   (do (println text " " data)
@@ -12,22 +12,6 @@
 ;;
 ;; default function for the configuration
 ;;
-(defn set-keyword [key value]
-  (fn [ctxt]
-    (merge ctxt {key value :result true})))
-
-(defn get-keyword [key]
-  (fn [ctxt]
-     (key ctxt)))
-
-(defn set-version [value]
-  (fn [ctxt]
-    (merge ctxt {:version value :result true})))
-
-(defn get-version []
-  (fn [ctxt]
-    (:version ctxt)))
-
 (defn substring? [word line]
   (let [str-word (str word)
         str-line (str line)]
@@ -37,423 +21,47 @@
      :else (not (= -1 (.indexOf (str str-line) (str str-word)))))))
 
 (defn line-contains? [words & body]
-  (fn [ctxt line]
+  (fn [specs line]
     (if (some #(substring? % line) words)
       (if (not (nil? body))
         (let [[fun & args] body]
-          (fun ctxt))
-        (merge ctxt {:result true}))
-      (merge ctxt {:result false}))))
+          (fun specs))
+        true)
+      false)))
 
 (defn line-empty? [& body]
-  (fn [ctxt line]
-    (if (empty? (clojure.string/trim line))
-      (merge ctxt {:result true})
-      (merge ctxt {:result false}))))
+  (fn [line]
+    (empty? (clojure.string/trim line))))
 
-(defn cell-contains? [words]
-  (fn [ctxt value]
+(defn cell-contains? [words & body]
+  (fn [value]
     (some #(substring? % value) words)))
 
 (defn convert-to-int []
-  (fn [ctxt value]
+  (fn [value & thousand-separator]
     (if (not (empty? value))
-      (if-let [thousand-separator (:thousand-separator ctxt)]
+      (if (nil? thousand-separator)
         (read-string (clojure.string/replace value thousand-separator ""))
         (read-string value))
       nil
       )))
 
 (defn split-into-cells [names separator]
-  (fn [ctxt value]
-    (let [values (clojure.string/split value (re-pattern separator))
+  (fn [token]
+    (let [values (clojure.string/split token (re-pattern separator))
           cells (map #(hash-map :name %1 :value %2)
                      names
                      (lazy-cat values (cycle [nil])))]
       cells)))
 
 (defn merge-into-cell [names join-separator]
-  (fn [ctxt cells]
+  (fn [cells]
     (->> names
          (map (fn [name] (filter #(= (:name %) name) cells)))
          (flatten)
          (map #(str (:value %1)))
          (clojure.string/join join-separator)
          )))
-;;
-;; extract values from XLS(X)
-;;
-(defn xls-cell-to-value [^Cell cell]
-  (-> (DataFormatter.)
-      (.formatCellValue cell)))
-
-(defn xls-row-to-tokens [^Row row]
-  (->> (map #(.getCell row % Row/RETURN_BLANK_AS_NULL) (range 0 (.getLastCellNum row)))
-       (map #(if (nil? %) nil (xls-cell-to-value %)))))
-
-(defn xls-row-to-line [^Row row]
-  (->> row
-       (xls-row-to-tokens)
-       (filter #(not (nil? %)))
-       (clojure.string/join " ")))
-;;
-;; multi method row-to-string and row-to-tokens
-;;
-(defmulti row-to-string (fn [data] (class data)))
-(defmethod row-to-string java.lang.String [data]
-  (str data))
-(defmethod row-to-string org.apache.poi.hssf.usermodel.HSSFRow [data]
-  (xls-row-to-line data))
-(defmethod row-to-string :default [data]
-  "")
-
-(defmulti row-to-tokens (fn [data & args] (class data)))
-(defmethod row-to-tokens java.lang.String [data re-separator]
-  (clojure.string/split data re-separator))
-(defmethod row-to-tokens org.apache.poi.hssf.usermodel.HSSFRow [data & args]
-  (xls-row-to-tokens data))
-(defmethod row-to-tokens :default [data & args]
-  [])
-;;
-;; generic function that processes lines while (condition? ctxt line) is true
-;;
-(defn true-condition? [ctxt & args]
-  (merge ctxt {:result true}))
-
-(defn process-data [process ctxt data]
-  (if (nil? process)
-    ctxt
-    (if-let [processed-data (process ctxt data)]
-      (if (map? (first processed-data))
-        (merge ctxt {:processed-rows (conj (:processed-rows ctxt) processed-data)
-                     :prev-row processed-data})
-        (merge ctxt {:processed-rows (apply conj (:processed-rows ctxt) processed-data)
-                     :prev-row nil}))
-      
-      ctxt)))
-
-(defn process-lines-while [condition? process {:keys [lines context]}]
-  (if (empty? lines)
-    {:lines lines :context context}
-    (let [context* (condition? context (first lines))]
-      (if (false? (:result context*))
-        {:lines lines :context context}
-        (let [context** (process-data process context (first lines))]
-          (recur condition? process {:lines (rest lines) :context context**}))
-        ))))
-;;
-;; HEADER LINE ?
-;;
-(defn header?-fn [conditions]
-  (if (empty? conditions)
-    (fn [ctxt line]
-      (merge ctxt {:result false}))
-    (fn [ctxt line]
-      (let [line* (row-to-string line)
-            ctxts (map #(% ctxt line*) conditions) ;list of separate context'
-            final-result (true? (some #(true? (:result %)) ctxts)) ;; true or false
-            ctxt* (apply merge {} ctxts)
-            ]
-        (update-in
-         (merge ctxt* {:result final-result})
-         [:global :header-lines]
-         inc
-         )
-        ))))
-;;
-;; FOOTER LINE ?
-;;
-(defn footer?-fn [conditions]
-  (if (empty? conditions)
-    (fn [ctxt line]
-      (merge ctxt {:result false}))
-    (fn [ctxt line]
-      (let [line* (row-to-string line)
-            ctxts (map #(% ctxt line*) conditions) ;list of separate context'
-            final-result (true? (some #(true? (:result %)) ctxts)) ;; true or false
-            ctxt* (apply merge {} ctxts)
-            ]
-        (update-in
-         (merge ctxt* {:result final-result})
-         [:global :footer-lines]
-         inc)))))
-;;
-;; DATA LINE ?
-;;
-(defn data?-fn [header? footer?]
-  (fn [ctxt line]
-    (let [ctxt* (footer? ctxt line)
-          footer-result (:result ctxt*)]
-      (if (true? footer-result)
-        (merge ctxt {:result false})
-        (merge ctxt {:result true})))))
-  
-;;
-;; TOKENIZER
-;;
-(defn line-to-tokens [re-separator line]
-  (row-to-tokens line re-separator))
-
-(defn token-to-cells [ctxt input-spec token]
-  (if-let [split-fn (:split input-spec)]
-    (map #(merge input-spec %1) (split-fn ctxt token))
-    [(merge input-spec {:value token})]))
-
-(defn tokenizer-fn [input-specs]
-  (fn[ctxt line]
-    (->> line
-;;         (do-nothing "line: ")
-         (line-to-tokens (re-pattern (get-in ctxt [:global :token-separator]))) ;; vector of tokens (token is just a string)
-;;         (do-nothing "Tokens:")
-         (map #(token-to-cells ctxt %1 %2) input-specs)
-         ;; vector of cells
-         ;; cell is a hashmap with :index :name :value :split (and others specified in input-spec)
-         (flatten)
-         (filter #(not (nil? (:name %)))) ;;remove cells without a name
-         (map #(dissoc % :split))
-         )))
-;;
-;; COLUMN CONVERTERS
-;;
-(defn find-spec-by-name [specs name]
-  (let [specs-with-name (filter #(= (:name %) name) specs)]
-    (if (nil? (first specs-with-name))
-      {}
-      (first specs-with-name))))
-
-(defn merge-cells-with-column-specs [column-specs cells]
-  (map #(merge (find-spec-by-name column-specs (:name %)) %)
-       cells))
-
-(defn complete-column-specs [specs1 specs2]
-  (let [all-specs (concat specs1 specs2)
-        clean-specs (filter #(not (nil? (:name %))) all-specs)]
-    (for [ [name specs] (group-by :name clean-specs)]
-      (apply merge specs))))
-
-(defn new-cell? [input-cells column-spec]
-  (empty? (find-spec-by-name input-cells (:name column-spec))))
-
-(defn add-new-cells [column-specs input-cells]
-  (concat
-   input-cells
-   (filter #(new-cell? input-cells %) column-specs)) ;; add column-spec if not yet a cell
-)
-
-(defn skip-cell [ctxt cell]
-  (if-let [skip-fn (:skip-row cell)]
-    (let [result (skip-fn ctxt (:value cell))]
-
-      ;; (if (true? result)
-      ;;   (println "skip-cell for value" (:value cell)))
-      (merge cell {:skip (skip-fn ctxt (:value cell))}))
-    cell))
-
-(defn transform-cell [ctxt cell]
-  (if-let [transform-fn (:transform cell)]
-    (merge cell {:value (transform-fn ctxt (:value cell))})
-    cell))
-
-(defn repeat-cell [previous-cell current-cell]
-  (if (or (nil? (:repeat-down current-cell))
-          (false? (:repeat-down current-cell))
-          (nil? previous-cell))
-    current-cell
-    (if (or (nil? (:value current-cell))
-            (empty? (:value current-cell)))
-      (merge current-cell {:value (:value previous-cell)})
-      current-cell)))
-
-(defn merge-cell [ctxt cells current-cell]
-  (if-let [merge-fn (:merge current-cell)]
-    (let [value (merge-fn ctxt cells)]
-      (do
-        (merge current-cell {:value value})))
-    current-cell
-    ))
-
-(defn merge-cells [ctxt cells]
-  (map #(merge-cell ctxt cells %) cells))
-
-(defn clean-cell [cell]
-  (dissoc cell :index :split :repeat-down :transform))
-
-(defn converter-fn [column-specs]
-  (fn [ctxt cells] ;; returns a vector of cells
-    (->> cells
-         (merge-cells-with-column-specs column-specs) ;; enrich cells with config details
-         (add-new-cells column-specs)
-;;         (do-nothing "enriched cells")
-         (map #(skip-cell ctxt %)) ;;
-         (map #(transform-cell ctxt %))
-;;         (do-nothing "transformed cells")
-         (map #(repeat-cell %1 %2) (:prev-row ctxt))
-;;         (do-nothing "repeated cells")
-         (merge-cells ctxt)
-;;         (do-nothing "merged cells")
-         (map #(clean-cell %1))
-         )))
-;;
-;; ROW (TOKENIZER and CONVERTER)
-;;
-(defn skip-row [cells]
-  (if (some #(true? (:skip %)) cells)
-    nil
-    cells))
-
-(defn process-row-fn [tokenizer converter]
-  (fn [ctxt line]
-    (->> line
-         (tokenizer ctxt) ;; line --> vector of tokens --> vector of basic cells
-         (converter ctxt) ;; vector basic cells --> vector of enriched/transformed cells
-         ;;         (do-nothing "after converter")
-;;         (do-nothing "before skipping")
-         (skip-row) ;; nil is one of the cells has the :skip flag set to true
-         ))) 
-;;
-;; OUTPUT
-;;
-;; merge with {:source n} where n comes from {:name n}
-(defn complete-output-spec [output-spec]
-  (let [{:keys [name source value]} output-spec]
-    (if (nil? value)
-      (if (nil? source)
-        (merge {:source name} output-spec)
-        output-spec)
-      output-spec)))
-
-(defn complete-output-specs [output-specs]
-  (map #(complete-output-spec %) output-specs))
-
-(defn get-value-for-output-cell [ctxt cells output-cell]
-  (let [{:keys [value source]} output-cell]
-    (if (not (nil? value))
-      value
-      (if-let [source-cell (find-spec-by-name cells source)]
-        (:value source-cell)
-        nil))))
-
-(defn copy-value-into-output-cell [ctxt cells output-cell]
-  (if-let [value (get-value-for-output-cell ctxt cells output-cell)]
-    (merge output-cell {:value value})
-    output-cell))
-
-;; cells is a row
-(defn output-row-fn [output-specs]
-  (let [full-output-specs (complete-output-specs output-specs)]
-    (fn [ctxt cells]
-      (->>
-       (map #(copy-value-into-output-cell ctxt cells %) full-output-specs)
-       ;; filter out the row if a filter is defined 
-       (map #(dissoc % :source))
-       ))))
-
-(defn outputs-row-fn [multi-output-specs]
-  (let [multi-full-output-specs (map #(complete-output-specs %) multi-output-specs)
-        multi-output-row-fn (map #(output-row-fn %) multi-full-output-specs)]
-    (fn [ctxt cells]
-      (map #(%1 ctxt cells) multi-output-row-fn) ;; [(output1 cells) (output2 cells) ..]
-       )))
-
-;;
-;; PROCESS THE LINES
-;;
-(defn move-lines-in-env [env]
-  (update-in
-   (merge env {:lines (get-in env [:context :processed-rows])})
-   [:context :processed-rows]
-   empty
-   )
-  )
-(defn process [config lines]
-  (let [
-        header? (header?-fn (:header config))
-        
-        tokenizer (tokenizer-fn (:input config))
-        converter (converter-fn (:columns config))
-        process-row (process-row-fn tokenizer converter)
-        
-        output-row (output-row-fn (:output config))
-
-        footer? (footer?-fn (:footer config))
-        ]
-
-    (->> {:context config :lines lines}
-         (process-lines-while header? nil)
-         (process-lines-while (not (or (header? footer?))) process-row )
-         (process-lines-while footer? nil)
-         (move-lines-in-env)
-         (process-lines-while true-condition? output-row)
-         )
-    
-    ))
-;;
-;; COMPLETE THE INPUT SPECS
-;;
-(defn input-spec-at-index [index input-specs]
-  (let [input-spec-from-config (first (filter #(= (:index %) index)
-                                                  input-specs))]
-    (if (nil? input-spec-from-config)
-      {:index index :name nil}
-      input-spec-from-config)))
-;;
-;; return vector[0..max-index] with tokenizer-specs
-;;
-(defn complete-input-specs [input-specs]
-  (let [max-index (apply max (map #(:index %) input-specs))]
-    (reduce #(conj %1 %2)
-            []
-            (map #(input-spec-at-index % input-specs) (range 0 (inc max-index))))))
-
-;;
-;; ADD DEFAULT VALUES TO ALL THE SPEC
-;;
-(defn add-defaults-to-spec [spec]
-  {:global (merge  {:token-separator ","
-                    :thousand-separator nil
-                    :decimal-separator "."
-                    :header-lines 0
-                    :converted-lines 0
-                    :footer-lines 0
-                    :output-separator "\t"}
-                   (:global spec))
-   :header (:header spec)
-   :footer (:footer spec)
-   :input (complete-input-specs (:input spec))
-   :columns (:columns spec)
-   :output (:output spec)
-   :outputs (:outputs spec)
-   :processed-rows []
-   ;;   :prev-row (cycle [nil])
-   :prev-row [nil nil nil nil nil nil nil nil nil nil nil nil ]
-   })
-
-  
-  ;; (let [cell-type (.getCellType cell)]
-  ;;   (cond
-  ;;    (= cell-type Cell/CELL_TYPE_BLANK) ""
-  ;;    (= cell-type Cell/CELL_TYPE_BOOLEAN) (true? (.getBooleanCellValue cell) "true" "false") 
-  ;;    (= cell-type Cell/CELL_TYPE_STRING) (.getStringCellValue cell)
-  ;;    (= cell-type Cell/CELL_TYPE_NUMERIC) (-> (DataFormatter.)
-  ;;                                             (.formatCellValue cell)
-  ;;                                             )))
-
-
-;; (defn xls-row-to-line [separator row]
-;;   (->> row
-;;    (cell-seq)
-;;    (map #(xls-cell-to-string %))
-;;    (clojure.string/join separator)
-;;    ))
-
-;; (defn xls-rows-to-line [rows]
-;;    (map #(xls-row-to-line %) rows))
-
-(defn excel-sheet-to-lines [sheet]
-  (->> sheet
-       (row-seq)
-       ))
-
 ;;
 ;; READ LINES FROM CSV/XLS/XLSX
 ;;
@@ -468,7 +76,10 @@
      (= extension "txt")  :csv
      :else :error
      )))
-
+(defn excel-sheet-to-lines [sheet]
+  (->> sheet
+       (row-seq)
+       ))
 (defmulti read-lines
   (fn [params]
     (get-file-extension params) ;;?? pass params and not (:filename params)
@@ -497,60 +108,319 @@
       (take max lines))))
 (defmethod read-lines :default [& args]
   [])
+;;
+;; WRAP LINES
+;; ----------
+;;
+(defn wrap-text-lines [lines]
+  (map #(hash-map :line-nb %1 :text %2) (range 1 java.lang.Integer/MAX_VALUE) lines))
+;;
+;; SKIP LINES
+;; ----------
+;;
+(defn skip-line? [skip-fns text]
+  (some true?
+        (map #(%1 text) skip-fns)))
+
+(defn skip-line [skip-fns line]
+  (merge line {:skip (skip-line? skip-fns (:text line))}))
+
+(defn skip-lines [skip-fns lines]
+  (map #(skip-line skip-fns %1) lines))
+
+(defn remove-skip-lines [lines]
+  (filter #(not (true? (:skip %1))) lines))
+;;
+;; TOKENIZER
+;; ---------
+;;
+;; extract values from XLS(X)
+;;
+(defn xls-cell-to-value [^Cell cell]
+  (-> (DataFormatter.)
+      (.formatCellValue cell)))
+(defn xls-row-to-tokens [^Row row]
+  (->> (map #(.getCell row % Row/RETURN_BLANK_AS_NULL) (range 0 (.getLastCellNum row)))
+       (map #(if (nil? %) nil (xls-cell-to-value %)))))
+(defn xls-row-to-line [^Row row]
+  (->> row
+       (xls-row-to-tokens)
+       (filter #(not (nil? %)))
+       (clojure.string/join " ")))
+;;
+;; multi method row-to-string
+;;
+(defmulti row-to-string (fn [data] (class data)))
+(defmethod row-to-string java.lang.String [data]
+  (str data))
+(defmethod row-to-string org.apache.poi.hssf.usermodel.HSSFRow [data]
+  (xls-row-to-line data))
+(defmethod row-to-string :default [data]
+  "")
+;;
+;; multi method row-to-tokens
+;;
+(defmulti row-to-tokens (fn [data & args] (class data)))
+(defmethod row-to-tokens java.lang.String [data re-separator]
+  (clojure.string/split data re-separator))
+(defmethod row-to-tokens org.apache.poi.hssf.usermodel.HSSFRow [data & args]
+  (xls-row-to-tokens data))
+(defmethod row-to-tokens :default [data & args]
+  [])
+;;
+;; split line into separate tokens
+;;
+(defn tokenize-line [re-separator line]
+  (merge line {:split-line (row-to-tokens (:text line) re-separator)}))
+
+(defn tokenize-lines [re-separator lines]
+  (map #(tokenize-line re-separator %) lines))
+;;
+;; merge each substring with corresponding token specification
+;;
+(defn token-to-cells [token-specs token]
+  (if-let [split-fn (:split token-specs)]
+    (map #(merge token-specs %1) (split-fn token))
+    [(merge token-specs {:value token})]))
+
+(defn line-to-cells [token-specs line]
+  (merge line {:cells 
+               (->> (:split-line line)
+                    (map #(token-to-cells %1 %2) token-specs)
+                    (flatten)
+                    (filter #(not (nil? (:name %))))
+                    (map #(dissoc % :split))
+                    )}))
+
+(defn lines-to-cells [token-specs lines]
+  (map #(line-to-cells token-specs %) lines))
+
+(defn build-token-spec-with-index [index token-specs]
+  (if-let [existing-token-spec (first (filter #(= (:index %) index)  token-specs))]
+    existing-token-spec
+    {:index index :name nil}))
+
+(defn complete-token-specs [token-specs]
+  (let [max-index (apply max (map #(:index %) token-specs))]
+    (reduce #(conj %1 %2)
+            []
+            (map #(build-token-spec-with-index % token-specs) (range 0 (inc max-index))))))
+
+(defn tokenizer-lines [specs lines]
+  (let [token-specs (:tokens specs)]
+    (->> lines
+         (tokenize-lines (re-pattern (get-in specs [:global :token-separator])))
+         (lines-to-cells token-specs))))
+;;
+;; COLUMNIZER
+;;
+;; for each cell, find column-spec with the same :name
+;;   if such column-spec exists, merge the cell and column-spec
+;;   otherwise, just keep the cell
+;;
+;; :columns-spec [ {:name "new" :transform true} {:name "country" :transform true} ]
+;; :cells        [ {:name "country" :value "BE } {:name "region" :value "EUR" } ]
+;; :columns      [ {:name "country" :value "BE" :transform true} {:name "region" :value "EUR"} ]
+(defn merge-cells-with-column-specs [columns-specs cells]
+  (map #(merge (find-spec-by-name columns-specs (:name %1)) %1)
+       cells))
+
+(defn merge-line-with-column-specs [columns-specs line]
+  (merge line {:columns (merge-cells-with-column-specs columns-specs (:cells line))}))
+
+(defn merge-lines-with-column-specs [column-specs lines]
+  (map #(merge-line-with-column-specs column-specs %1) lines))
+;;
+;; for any column-spec that has no corresponding cell (not the same :name)
+;; add the column-spec as cell
+;;
+;; :columns-spec [ {:name "new" :transform true} {:name "country" :transform true} ]
+;; :cells        [ {:name "country" :value "BE } {:name "region" :value "EUR" } ]
+;; :columns      [ {:name "country" :value "BE" :transform true} {:name "region" :value "EUR"} {:name "new" :transform true} ]
+(defn new-cell? [columns column-spec]
+  (empty? (find-spec-by-name columns (:name column-spec))))
+
+(defn add-new-column-spec [column-specs columns]
+  ;; column-specs [ {:name a_very_special_name :transform fn } { ... } ... ]
+  ;; cells        [ {:name region :value "EUR" } {:name country ... }
+  ;; result       [ {:name a_very_special_name .. } {:name region :value "EUR" } {:name country ... }
+  (concat
+   columns
+   (filter #(new-cell? columns %) column-specs))
+  )
+
+(defn add-new-column-specs-line [column-specs line]
+  (merge line {:columns (add-new-column-spec column-specs (:columns line))})
+  )
+
+(defn add-new-column-specs-lines [column-specs lines]
+  (map #(add-new-column-specs-line column-specs %1) lines))
+
+(defn merge-cell [cells current-cell]
+  (if-let [merge-fn (:merge current-cell)]
+    (merge current-cell {:value (merge-fn cells)})
+    current-cell))
+
+(defn merge-cells [cells]
+  (map #(merge-cell cells %) cells))
+
+(defn clean-cell [cell]
+  (dissoc cell :index :split :repeat-down :transform))
+
+(defn transform-cell [specs cell]
+  (if-let [transform-fn (:transform cell)]
+    (merge cell {:value (transform-fn specs (:value cell))})
+    cell))
+
+(defn transform-line [specs line]
+  (merge line {:columns (map #(transform-cell specs %) (:columns line))})
+  )
+
+(defn transform-lines [specs lines]
+  (map #(transform-line specs %1) lines))
+
+;; :value must be string type
+(defn repeat-down-cell [previous-cell current-cell]
+  (if (or (nil? (:repeat-down current-cell))
+          (false? (:repeat-down current-cell))
+          (nil? previous-cell))
+    current-cell
+    (if (or (nil? (:value current-cell))
+            (empty? (:value current-cell)))
+      (merge current-cell {:value (:value previous-cell)})
+      current-cell)))
+
+(defn repeat-down-line [specs prev-line line]
+  (if (nil? prev-line)
+    (merge line {:columns (:cells line)})
+    (merge line {:columns (map #(repeat-down-cell %1 %2) (:cells prev-line) (:cells line))})))
+
+(defn repeat-down-lines [specs lines]
+  (map #(repeat-down-line specs %1 %2) (cons nil lines) lines))
+
+(defn columns-lines [specs lines]
+  (->> lines
+       (map #(merge-line-with-column-specs (:columns specs) %1))
+       (map #(add-new-column-specs-lines specs %1))
+       (map #(transform-line specs %1))
+       (repeat-down-lines lines)
+       ))
+;;
+;; OUTPUT
+;; ------
+;;
 
 
-(defn process-lines [spec lines]
-  (let [full-spec (add-defaults-to-spec spec)
-        
-        header? (header?-fn (:header full-spec))
-        
-        tokenizer (tokenizer-fn (:input full-spec))
-        converter (converter-fn (:columns full-spec))
-        process-row (process-row-fn tokenizer converter)
+;;
+;; OUTPUT
+;;
+;; merge with {:source n} where n comes from {:name n}
+;; result: output-spec has either a :value or a :source
+(defn add-source-to-output-spec [output-spec]
+  (let [{:keys [name source value]} output-spec]
+    (if (nil? value)
+      (if (nil? source)
+        (merge {:source name} output-spec)
+        output-spec)
+      output-spec)))
 
-        output-row (if (nil? (:outputs full-spec))
-                     (output-row-fn (:output full-spec))
-                     (outputs-row-fn (:outputs full-spec)))
-        
-        footer? (footer?-fn (:footer full-spec))
+(defn add-source-to-output-specs [output-specs]
+  (map #(add-source-to-output-spec %) output-specs))
 
-        data? (data?-fn header? footer?)
-        ]
-    
-    (->> {:context full-spec :lines lines}
-         (process-lines-while header? nil)
-         (process-lines-while data? process-row)
-         (process-lines-while footer? nil)
-         (move-lines-in-env)
-         (process-lines-while true-condition? output-row)
-         )))
+(defn get-value-from-output-spec [output-spec columns]
+  (let [{:keys [value source]} output-spec]
+    (if (not (nil? value))
+      value
+      (if-let [source-cell (find-spec-by-name columns source)]
+        (:value source-cell)
+        nil))))
 
-(defn to-csv [filename lines separator]
+(defn transform-output-spec-to-output [output-spec columns]
+  (if-let [value (get-value-from-output-spec output-spec columns)]
+    (merge output-spec {:value value})
+    output-spec))
+
+(defn single-output-line [output-specs line]
+  (merge line {:output 
+               (map #(transform-output-spec-to-output %1 (:columns line)) output-specs)}))
+
+(defn single-output-lines [output-specs lines]
+  (let [full-output-specs (add-source-to-output-specs output-specs)]
+    (map #(single-output-line full-output-specs %1) lines)))
+
+(defn multi-output-lines [multi-output-specs lines]
+  (map #(single-output-lines %1 lines) multi-output-specs))
+
+(defn output-lines [specs lines]
+  (if (contains? specs :output)
+    (multi-output-lines [(:output specs)] lines)
+    (multi-output-lines (:outputs specs)  lines)))
+
+(defn clean-output [output]
+  (map #(dissoc %1 :source) output))
+
+(defn clean-output-line [line]
+  (merge (dissoc line :output)
+         {:output  (clean-output (:output line))}))
+
+(defn clean-output-lines [lines]
+  (map #(clean-output-line %1) lines))
+
+(defn output-to-single-csv-line [separator output]
+  (clojure.string/join separator
+                       (map #(:value %1) output)))
+
+(defn output-to-single-csv-lines [separator lines]
+  (let [outputs (map #(:output %1) lines)]
+    (map #(output-to-single-csv-line separator %) outputs)))
+
+(defn to-csv [filename csv-lines]
   (with-open [wrtr (writer filename)]
     (doall (map (fn [line]
-                  (->> line
-                       (map #(str (:value %)))
-                       (clojure.string/join separator)
-                       (.write wrtr))
+                  (.write wrtr line)
                   (.write wrtr "\n"))
-                lines
+                csv-lines
                 )))
   true)
+
+;;
+;; ADD DEFAULT VALUES TO ALL THE SPEC
+;;
+(defn add-defaults-to-spec [spec]
+  {:global (merge  {:token-separator ","
+                    :thousand-separator nil
+                    :decimal-separator "."
+                    :header-lines 0
+                    :converted-lines 0
+                    :footer-lines 0
+                    :output-separator "\t"}
+                   (:global spec))
+   :skip (:skip spec)
+   :tokens (complete-token-specs (:tokens spec))
+   :columns (:columns spec)
+   :output (:output spec)
+   :outputs (:outputs spec)
+   })
+
 
 
 (defn convert-file [input-filename spec output-filename sheetname]
   (let [params {:filename input-filename :sheetname sheetname}
         lines (read-lines params)
-        _ (println params)
-        env (process-lines spec lines)
-        converted-lines (get-in env [:context :processed-rows])
-        output-separator (get-in spec [:global :output-separator])        
+        converted-lines nil
+        output-separator nil
         ]
-    (to-csv output-filename converted-lines output-separator))
-  )
+    (to-csv output-filename converted-lines output-separator)))
+
+(defn process-lines [specs lines]
+  (->> lines
+       (wrap-text-lines)
+       (skip-lines specs)
+       (remove-skip-lines)
+       (tokenizer-lines specs)))
 
 ;;
-;; ACI functions and specifications
+;; ACI INTERNATIONAL & WORLDWIDE
 ;;
 (defn aci-pax-to-int []
   (fn [ctxt value]
@@ -588,84 +458,180 @@
             {:name "tottot"}
             ]
    })
-
-(def albatross-single-year
-  {:global {:token-separator ";"
-            :thousand-separator nil
-            :decimal-separator nil         
-            }
-   :header [(line-contains? ["2008 Total"] (set-version "2008"))
-            (line-contains? ["2009 Total"] (set-version "2009"))
-            (line-contains? ["2010 Total"] (set-version "2010"))
-            (line-contains? ["2010 Total"] (set-version "2011"))
-            (line-contains? ["2010 Total"] (set-version "2012"))
-            (line-contains? ["2010 Total"] (set-version "2013"))
-            ]
-   :input [{:index 1 :name "iata"}
-           {:index 2 :name "icao"}
-           {:index 3 :name "airportname"}
-           {:index 4 :name "country"}
-           {:index 5 :name "region"}
-           {:index 10 :name "tottot"}
-           {:index 11 :name "domtot"}
-           {:index 11 :name "inttot"}
-           ]
-   :columns [{:name "tottot" :transform (convert-to-int)}
-             {:name "domtot" :transform (convert-to-int)}
-             {:name "inttot" :transform (convert-to-int)}
-             ]
-   :output [{:name "type" :value "airport"}
-            {:name "iata"}
-            {:name "icao"}
-            {:name "airportname"}
-            {:name "country"}
-            {:name "region"}
-            {:name "tottot"}
-            {:name "domtot"}
-            {:name "inttot"}
-            ]   })
-
+;;
+;; ALBATROSS
+;;
 (def albatross-all-spec
   {:global {:token-separator "\\^"
             :thousand-separator nil
             :decimal-separator nil
             :output-separator "\t"
             }
-   :header [(line-contains? ["2008 Total"] (set-version "2008"))
-            (line-contains? ["2009 Total"] (set-version "2009"))
-            (line-contains? ["2010 Total"] (set-version "2010"))
-            (line-contains? ["2010 Total"] (set-version "2011"))
-            (line-contains? ["2010 Total"] (set-version "2012"))
-            (line-contains? ["2010 Total"] (set-version "2013"))
+   :header [(line-contains? ["Total" "Other"])
             ]
-   :input [{:index 1 :name "iata"}
+   :tokens [{:index 1 :name "iata"}
            {:index 2 :name "icao"}
            {:index 3 :name "airportname"}
            {:index 4 :name "country"}
            {:index 5 :name "region"}
-           {:index 14 :name "tottot"}
-           {:index 15 :name "domtot"}
-           {:index 16 :name "inttot"}
+           
+           {:index 10 :name "2013_tot"}
+           {:index 11 :name "2013_dom"}
+           {:index 12 :name "2013_int"}
+
+           {:index 14 :name "2012_tot"}
+           {:index 15 :name "2012_dom"}
+           {:index 16 :name "2012_int"}
+
+           {:index 18 :name "2011_tot"}
+           {:index 19 :name "2011_dom"}
+           {:index 20 :name "2011_int"}
+
+           {:index 22 :name "2010_tot"}
+           {:index 23 :name "2010_dom"}
+           {:index 24 :name "2010_int"}
+
+           {:index 26 :name "2009_tot"}
+           {:index 27 :name "2009_dom"}
+           {:index 28 :name "2009_int"}
+
+           {:index 30 :name "2008_tot"}
+           {:index 31 :name "2008_dom"}
+           {:index 32 :name "2008_int"}
            ]
-   :columns [{:name "tottot" :transform (convert-to-int)}
-             {:name "domtot" :transform (convert-to-int)}
-             {:name "inttot" :transform (convert-to-int)}
+   :columns [
+             {:index 10 :name "2013_tot" :transform (convert-to-int)}
+             {:index 11 :name "2013_dom" :transform (convert-to-int)}
+             {:index 12 :name "2013_int" :transform (convert-to-int)}
+             
+             {:index 14 :name "2012_tot" :transform (convert-to-int)}
+             {:index 15 :name "2012_dom" :transform (convert-to-int)}
+             {:index 16 :name "2012_int" :transform (convert-to-int)}
+             
+             {:index 18 :name "2011_tot" :transform (convert-to-int)}
+             {:index 19 :name "2011_dom" :transform (convert-to-int)}
+             {:index 20 :name "2011_int" :transform (convert-to-int)}
+             
+             {:index 22 :name "2010_tot" :transform (convert-to-int)}
+             {:index 23 :name "2010_dom" :transform (convert-to-int)}
+             {:index 24 :name "2010_int" :transform (convert-to-int)}
+             
+             {:index 26 :name "2009_tot" :transform (convert-to-int)}
+             {:index 27 :name "2009_dom" :transform (convert-to-int)}
+             {:index 28 :name "2009_int" :transform (convert-to-int)}
+             
+             {:index 30 :name "2008_tot" :transform (convert-to-int)}
+             {:index 31 :name "2008_dom" :transform (convert-to-int)} 
+             {:index 32 :name "2008_int" :transform (convert-to-int)}
              ]
+   :outputs [
+             [
+              {:name "type" :value "airport"}
+              {:name "iata"}
+              {:name "icao"}
+              {:name "airportname"}
+              {:name "country"}
+              {:name "region"}
+              {:name "period" :value "2013"}
+              {:name "2013_tot"}
+              {:name "2013_dom"}
+              {:name "2013_int"}             
+            ]
+             [
+              {:name "type" :value "airport"}
+              {:name "iata"}
+              {:name "icao"}
+              {:name "airportname"}
+              {:name "country"}
+              {:name "region"}
+              {:name "period" :value "2012"}
+              {:name "2012_tot"}
+              {:name "2012_dom"}
+              {:name "2012_int"}             
+            ]
+             [
+              {:name "type" :value "airport"}
+              {:name "iata"}
+              {:name "icao"}
+              {:name "airportname"}
+              {:name "country"}
+              {:name "region"}
+              {:name "period" :value "2011"}
+              {:name "2011_tot"}
+              {:name "2011_dom"}
+              {:name "2011_int"}             
+            ]
+             [
+              {:name "type" :value "airport"}
+              {:name "iata"}
+              {:name "icao"}
+              {:name "airportname"}
+              {:name "country"}
+              {:name "region"}
+              {:name "period" :value "2010"}
+              {:name "2010_tot"}
+              {:name "2010_dom"}
+              {:name "2010_int"}             
+            ]
+             [
+              {:name "type" :value "airport"}
+              {:name "iata"}
+              {:name "icao"}
+              {:name "airportname"}
+              {:name "country"}
+              {:name "region"}
+              {:name "period" :value "2009"}
+              {:name "2009_tot"}
+              {:name "2009_dom"}
+              {:name "2009_int"}             
+              ]
+             [
+              {:name "type" :value "airport"}
+              {:name "iata"}
+              {:name "icao"}
+              {:name "airportname"}
+              {:name "country"}
+              {:name "region"}
+              {:name "period" :value "2008"}
+              {:name "2008_tot"}
+              {:name "2008_dom"}
+              {:name "2008_int"}             
+              ]
+             ]
+   })
+;;
+;; ANAC
+;;
+(defn anac-trim []
+  (fn [ctxt value]
+    (clojure.string/trim value)))
+
+(def anac
+  {:global {:thousand-separator "."
+            :decimal-separator ""
+            }
+
+   :input [{:index 0 :name "icao_name" :split (split-into-cells ["icao" "name"] "-")}
+           {:index 4 :name "domtot"}
+           {:index 5 :name "inttot"}
+           {:index 6 :name "tottot"}
+           ]
+   :columns [{:name "icao" :skip-row (cell-contains? "Superintendência") :transform (anac-trim)}
+             {:name "name" :transform (anac-trim)}]
+
+   :footer [(line-contains? ["INFRAERO"])]
+   
    :output [{:name "type" :value "airport"}
-            {:name "iata"}
+            {:name "iata" :value ""}
             {:name "icao"}
-            {:name "airportname"}
-            {:name "country"}
-            {:name "region"}
-            {:name "tottot"}
+            {:name "name"}
+            {:name "region" :value ""}
             {:name "domtot"}
             {:name "inttot"}
-            ]
+            {:name "tottot"}]
    })
-
-
 ;;
-;; btre international config
+;; BTRE INTERNATIONAL
 ;;
 (def btre-int-spec
   {:global {:thousand-separator " "
@@ -689,7 +655,7 @@
              {:name "arrint" :transform (convert-to-int)}
              {:name "depint" :transform (convert-to-int)}
              {:name "totint" :transform (convert-to-int)}]
-             
+   
    :footer [(line-contains? ["Please"])
             (line-empty?)]
    :outputs [
@@ -716,7 +682,41 @@
               ]
              ]
    })
+;;
+;; BTRE DOMESTIC
+;;
+(defn btre-trim []
+  (fn [ctxt value]
+    (clojure.string/trim value)))
 
+(def btre-dom
+  {:global {:thousand-separator " "}
+   :input [{:index 1 :name "city-pair" :split (split-into-cells ["origin" "destination"] "-")}
+           {:index 2 :name "2012"}
+           {:index 3 :name "2013"}
+           ]
+   :columns [{:name "origin" :transform (btre-trim)}
+             {:name "destination" :transform (btre-trim)}
+             {:name "2012" :transform (convert-to-int)}
+             {:name "2013" :transform (convert-to-int)}]
+   
+   :output [{:name "type" :value "citypair"}
+            {:name "origin"}
+            {:name "destination"}
+            {:name "tottot" :source "2013"}]
+
+   })
+;;
+;; BTS - DB1B
+;;
+
+;;
+;; BTS - T100
+;;
+
+;;
+;; DESTATIS
+;;
 (defn destatis-convert-to-int []
   (fn [ctxt value]
     (if (not (empty? value))
@@ -776,7 +776,40 @@
    :outputs (create-destatis-outputs)
    })
 
+(defn dgca-month? []
+  (fn [ctxt value]
+    (some #(substring? % value) ["JAN" "FEB" "MAR" "APR" "MAY" "JUN" "JUL" "AUG" "SEP" "OCT" "NOV" "DEC"]))
+  )
 
+(defn dgca-month []
+  (fn [ctxt value]
+    (-> value
+        (clojure.string/trim)
+        (clojure.string/replace "(R)" "")
+        (clojure.string/replace "(P)" ""))))
+
+(def dgca-india-spec
+  {:global {:thousand-separator ","
+            :decimal-separator ""
+            :output-separator "\t"}
+
+   :header []
+
+   :input [ {:index 0 :name "month"}
+            {:index 4 :name "pax"}
+            ]
+
+   :columns [ {:name "month" :skip-row (not dgca-month?) :transform (dgca-month)}]
+
+   :outputs [{:name "type" :value "airline"}
+             {:name "year" :value "2013"}
+             {:name "iata" :value ""}
+             {:name "icao" :value ""}
+             ]
+   
+   :footer [(line-contains? ["SOURCE" "ICAO"])]
+
+   })
 ;;
 ;;
 ;; VM

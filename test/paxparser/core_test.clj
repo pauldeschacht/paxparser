@@ -166,11 +166,13 @@
                       )
           columns2 (:columns (nth lines* 1))
           ]
+      (println columns2)
       (is (= {:index 0 :name "identifier" :value "50"} (nth columns2 0)))
       (is (true? (contains? (nth columns2 1) :transform)))
       (is (= "Belgium" (:value (nth columns2 1))))
       (is (= {:index 2 :name "region" :value "Europe"} (nth columns2 2)))
       (is (= {:name "total"} (nth columns2 3)))
+
       )
     )
   )
@@ -204,18 +206,18 @@
   (testing "repeat-down-cell"
     (let [prev-cell {:value "5"}
           cell      {:repeat-down true}
-          new-cell  (new-repeat-down-cell prev-cell cell)
+          new-cell  (repeat-down-cell prev-cell cell)
           ]
       (is (= "5" (:value new-cell)))))
   (testing "repeat-down-cell-with-value"
     (let [prev-cell {:value "5"}
           cell {:value "6" :repeat-down true}
-          new-cell (new-repeat-down-cell prev-cell cell)]
+          new-cell (repeat-down-cell prev-cell cell)]
       (is (= "6" (:value new-cell)))))
   (testing "repeat-down-cell-with-value"
     (let [prev-cell {:value "5"}
           cell {:value "" :repeat-down true}
-          new-cell (new-repeat-down-cell prev-cell cell)]
+          new-cell (repeat-down-cell prev-cell cell)]
       (is (= "5" (:value new-cell))))))
 
 
@@ -227,7 +229,7 @@
         line3 {:cells [{:value "3.1"} {:value "3.2"} {:value "3.3" :repeat-down true}]}
         line4 {:cells [{:value "4.1"} {:value "4.2"} {:value "" :repeat-down false}]}
         lines [line1, line2 line3 line4]
-        lines* (new-repeat-down-lines specs lines)
+        lines* (repeat-down-lines specs lines)
         ]
     (is (= "1.1" (:value (nth (:columns (nth lines* 0))  0 ))))
     (is (= "1.2" (:value (nth (:columns (nth lines* 0))  1 ))))

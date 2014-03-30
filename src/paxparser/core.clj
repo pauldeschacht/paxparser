@@ -214,6 +214,11 @@
 ;;
 ;; COLUMNIZER
 ;;
+(defn find-spec-by-name [specs name]
+  (let [specs-with-name (filter #(= (:name %) name) specs)]
+    (if (nil? (first specs-with-name))
+      {}
+      (first specs-with-name))))
 ;; for each cell, find column-spec with the same :name
 ;;   if such column-spec exists, merge the cell and column-spec
 ;;   otherwise, just keep the cell
@@ -232,7 +237,7 @@
   (map #(merge-line-with-column-specs column-specs %1) lines))
 ;;
 ;; for any column-spec that has no corresponding cell (not the same :name)
-;; add the column-spec as cell
+;; add the  column-spec as cell
 ;;
 ;; :columns-spec [ {:name "new" :transform true} {:name "country" :transform true} ]
 ;; :cells        [ {:name "country" :value "BE } {:name "region" :value "EUR" } ]

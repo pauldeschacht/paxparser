@@ -160,13 +160,12 @@
                       (remove-skip-lines)
                       (tokenize-lines (re-pattern (get-in specs [:global :token-separator])))
                       (lines-to-cells (:tokens specs))
-                      (merge-lines-with-column-specs (:column specs))
+                      (merge-lines-with-column-specs (:columns specs))
                       (add-new-column-specs-lines (:columns specs))
                       (transform-lines (:columns specs))
                       )
           columns2 (:columns (nth lines* 1))
           ]
-      (println columns2)
       (is (= {:index 0 :name "identifier" :value "50"} (nth columns2 0)))
       (is (true? (contains? (nth columns2 1) :transform)))
       (is (= "Belgium" (:value (nth columns2 1))))
@@ -194,10 +193,15 @@
   (testing "test single output"
     (let [specs (get-test-specs)
           lines (test-get-transformed-lines)
-          lines* (output-lines specs lines)
+          csv (->> lines
+                   (output-lines specs)
+                   (clean-outputs-lines)
+                   (output-to-csv-lines ",")
+                   )
+          
           ]
-      (println lines*)
-      (is (= true true))
+      (is (= (first (first  csv)) ",Id,Country," ))
+      (is (= (first  csv) '(",Id,Country," ",50,Belgium," ",70,France,") ))
       )
 
     ))

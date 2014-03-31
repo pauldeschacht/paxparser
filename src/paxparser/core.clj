@@ -93,6 +93,7 @@
   (let [workbook (load-workbook filename)
         sheet (select-sheet 0 workbook)
         lines (excel-sheet-to-lines sheet)
+        lines* (map #(row-to-string %) lines)
         ]
     (if (nil? max)
       lines
@@ -102,6 +103,7 @@
         workbook (load-workbook filename)
         sheet (select-sheet sheetname workbook)
         lines (excel-sheet-to-lines sheet)
+        lines* (map #(row-to-string %) lines)
         ]
     (if (nil? max)
       lines
@@ -154,6 +156,8 @@
 (defmethod row-to-string java.lang.String [data]
   (str data))
 (defmethod row-to-string org.apache.poi.hssf.usermodel.HSSFRow [data]
+  (xls-row-to-line data))
+(defmethod row-to-string org.apache.poi.xssf.usermodel.XSSFRow [data]
   (xls-row-to-line data))
 (defmethod row-to-string :default [data]
   "")
@@ -314,11 +318,6 @@
 ;; OUTPUT
 ;; ------
 ;;
-
-
-;;
-;; OUTPUT
-;;
 ;; merge with {:source n} where n comes from {:name n}
 ;; result: output-spec has either a :value or a :source
 (defn add-source-to-output-spec [output-spec]
@@ -371,16 +370,22 @@
 (defn clean-output-lines [lines]
   (map #(clean-output-line %1) lines))
 
-(defn output-to-single-csv-line [separator output]
+(defn clean-outputs-lines [outputs]
+  (map #(clean-output-lines %1) outputs))
+
+(defn output-to-csv-line [separator output]
   (clojure.string/join separator
                        (map #(:value %1) output)))
 
-(defn output-to-single-csv-lines [separator lines]
+(defn output-to-csv-lines [separator lines]
   (let [outputs (map #(:output %1) lines)]
-    (map #(output-to-single-csv-line separator %) outputs)))
+    (map #(output-to-csv-line separator %) outputs)))
 
-(defn to-csv [filename csv-lines]
-  (with-open [wrtr (writer filename)]
+(defn outputs-to-csv-lines [separator lines]
+  (map #(output-to-csv-lines separator %1) lines))
+
+(defn csv-output-to-file [filename csv-lines]
+  (with-open [wrtr (writer filename :append true)]
     (doall (map (fn [line]
                   (.write wrtr line)
                   (.write wrtr "\n"))
@@ -388,10 +393,13 @@
                 )))
   true)
 
+(defn csv-outputs-to-file [filename outputs-csv-lines]
+  (map #(csv-output-to-file filename %1) outputs-csv-lines)
+  true)
 ;;
 ;; ADD DEFAULT VALUES TO ALL THE SPEC
 ;;
-(defn add-defaults-to-spec [spec]
+(defn add-defaults-to-specs [specs]
   {:global (merge  {:token-separator ","
                     :thousand-separator nil
                     :decimal-separator "."
@@ -399,23 +407,13 @@
                     :converted-lines 0
                     :footer-lines 0
                     :output-separator "\t"}
-                   (:global spec))
-   :skip (:skip spec)
-   :tokens (complete-token-specs (:tokens spec))
-   :columns (:columns spec)
-   :output (:output spec)
-   :outputs (:outputs spec)
+                   (:global specs))
+   :skip (:skip specs)
+   :tokens (complete-token-specs (:tokens specs))
+   :columns (:columns specs)
+   :output (:output specs)
+   :outputs (:outputs specs)
    })
-
-
-
-(defn convert-file [input-filename spec output-filename sheetname]
-  (let [params {:filename input-filename :sheetname sheetname}
-        lines (read-lines params)
-        converted-lines nil
-        output-separator nil
-        ]
-    (to-csv output-filename converted-lines output-separator)))
 
 (defn process-lines [specs lines]
   (->> lines
@@ -424,47 +422,26 @@
        (remove-skip-lines)
        (tokenizer-lines specs)))
 
-;;
-;; ACI INTERNATIONAL & WORLDWIDE
-;;
-(defn aci-pax-to-int []
-  (fn [ctxt value]
-    (if (= value "*****")
-      nil
-      (read-string (clojure.string/replace value " " ""))
-      )))
+(defn convert-file [input-filename specs output-filename sheetname]
+  (let [params {:filename input-filename :sheetname sheetname}
+        specs* (add-defaults-to-specs specs)
+        lines (read-lines params)]
+    (->> lines
+         (wrap-text-lines)
+         (skip-lines (:skip specs*))
+         (remove-skip-lines)
+         (tokenize-lines (re-pattern (get-in specs* [:global :token-separator])))
+         (lines-to-cells (:tokens specs*))
+         (merge-lines-with-column-specs (:columns specs*))
+         (add-new-column-specs-lines (:columns specs*))
+         (transform-lines (:columns specs*))
+         (output-lines specs*)
+         (clean-outputs-lines)
+         (outputs-to-csv-lines (get-in specs* [:global :output-separator]))
+         (csv-outputs-to-file output-filename)
+         )))
 
-(defn aci-trim []
-  (fn [ctxt value]
-    (clojure.string/trim value)))
 
-(def aci-spec
-  {:global {:token-separator ";"
-            :thousand-separator " "
-            :decimal-separator "."}
-   
-   :header[(line-contains? ["CODE" "COUNTRY"])
-           ]
-   :input [{:index 0 :name "region"}
-           {:index 1 :name "city-country-code" :split (split-into-cells ["city" "country"] ",")}
-           {:index 2 :name "iata"}
-           {:index 3 :name "tottot"}
-           ]
-   :columns [{:name "tottot" :transform (aci-pax-to-int)}
-             {:name "city" :transform (aci-trim)}
-             {:name "country" :transform (aci-trim)}
-             {:name "name" :transform (aci-trim)}
-             ]
-   :output [{:name "type" :value "airport"}
-            {:name "iata"}
-            {:name "city"}
-            {:name "region"}
-            {:name "country"}
-            {:name "tottot"}
-            ]
-   })
-;;
-;; ALBATROSS
 ;;
 (def albatross-all-spec
   {:global {:token-separator "\\^"

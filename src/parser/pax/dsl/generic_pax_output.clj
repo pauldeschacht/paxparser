@@ -1,4 +1,4 @@
-(ns paxparser.dsl.generic-pax-output)
+(ns parser.pax.dsl.generic-pax-output)
 
 (def pax-output
   [{:name "paxtype"}

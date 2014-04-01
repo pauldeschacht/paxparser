@@ -1,5 +1,6 @@
-(ns paxparser.dsl.aci
-  (:use [paxparser.core]))
+(ns parser.pax.dsl.aci
+  (:use [parser.core])
+  (:use [parser.dsl.generic-pax-output]))
 ;;
 ;; ACI INTERNATIONAL & WORLDWIDE
 ;;
@@ -15,22 +16,6 @@
     (if (nil? value)
       value
       (clojure.string/trim value))))
-
-(defn get-filename []
-  (fn [specs value]
-    (:filename specs)))
-
-(defn get-capture-date []
-  (fn [specs value]
-    (:capture-date specs)))
-
-(defn get-valid-from []
-  (fn [specs value]
-    (:valid-from specs)))
-
-(defn get-valid-to []
-  (fn [specs value]
-    (:valid-to specs)))
 
 
 (def aci-spec

@@ -1,6 +1,7 @@
 (ns parser.pax.dsl.aci
   (:use [parser.core])
-  (:use [parser.dsl.generic-pax-output]))
+  (:use [parser.pax.core])
+  (:use [parser.pax.dsl.generic-pax-output]))
 ;;
 ;; ACI INTERNATIONAL & WORLDWIDE
 ;;
@@ -39,6 +40,7 @@
              {:name "tottot" :transform (aci-pax-to-int)}
              {:name "origin-city-name" :transform (aci-trim)}
              {:name "origin-country-iata" :transform (aci-trim)}]
+   
    :output [{:name "type" :value "airport"}
             {:name "iata"}
             {:name "city"}

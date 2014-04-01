@@ -21,11 +21,11 @@
      :else (not (= -1 (.indexOf (str str-line) (str str-word)))))))
 
 (defn line-contains? [words & body]
-  (fn [specs line]
+  (fn [line]
     (if (some #(substring? % line) words)
       (if (not (nil? body))
         (let [[fun & args] body]
-          (fun specs))
+          (fun))
         true)
       false)))
 
@@ -65,6 +65,43 @@
 ;;
 ;; READ LINES FROM CSV/XLS/XLSX
 ;;
+;;
+;; extract values from XLS(X)
+;;
+(defn xls-cell-to-value [^Cell cell]
+  (-> (DataFormatter.)
+      (.formatCellValue cell)))
+(defn xls-row-to-tokens [^Row row]
+  (->> (map #(.getCell row % Row/RETURN_BLANK_AS_NULL) (range 0 (.getLastCellNum row)))
+       (map #(if (nil? %) nil (xls-cell-to-value %)))))
+(defn xls-row-to-line [^Row row]
+  (->> row
+       (xls-row-to-tokens)
+       (filter #(not (nil? %)))
+       (clojure.string/join (char 31))))
+;;
+;; multi method row-to-string
+;;
+(defmulti row-to-string (fn [data] (class data)))
+(defmethod row-to-string java.lang.String [data]
+  (str data))
+(defmethod row-to-string org.apache.poi.hssf.usermodel.HSSFRow [data]
+  (xls-row-to-line data))
+(defmethod row-to-string org.apache.poi.xssf.usermodel.XSSFRow [data]
+  (xls-row-to-line data))
+(defmethod row-to-string :default [data]
+  "")
+;;
+;; multi method row-to-tokens
+;;
+(defmulti row-to-tokens (fn [data & args] (class data)))
+(defmethod row-to-tokens java.lang.String [data re-separator]
+  (clojure.string/split data re-separator))
+(defmethod row-to-tokens org.apache.poi.hssf.usermodel.HSSFRow [data & args]
+  (xls-row-to-tokens data))
+(defmethod row-to-tokens :default [data & args]
+  [])
+
 (defn get-file-extension [params]
   (let [filename (:filename params)
         extension (last (clojure.string/split filename #"\."))]
@@ -96,8 +133,8 @@
         lines* (map #(row-to-string %) lines)
         ]
     (if (nil? max)
-      lines
-      (take max lines))))
+      lines*
+      (take max lines*))))
 (defmethod read-lines :xlsx [params]
   (let [{:keys [filename sheetname max]} params
         workbook (load-workbook filename)
@@ -106,8 +143,8 @@
         lines* (map #(row-to-string %) lines)
         ]
     (if (nil? max)
-      lines
-      (take max lines))))
+      lines*
+      (take max lines*))))
 (defmethod read-lines :default [& args]
   [])
 ;;
@@ -135,42 +172,7 @@
 ;;
 ;; TOKENIZER
 ;; ---------
-;;
-;; extract values from XLS(X)
-;;
-(defn xls-cell-to-value [^Cell cell]
-  (-> (DataFormatter.)
-      (.formatCellValue cell)))
-(defn xls-row-to-tokens [^Row row]
-  (->> (map #(.getCell row % Row/RETURN_BLANK_AS_NULL) (range 0 (.getLastCellNum row)))
-       (map #(if (nil? %) nil (xls-cell-to-value %)))))
-(defn xls-row-to-line [^Row row]
-  (->> row
-       (xls-row-to-tokens)
-       (filter #(not (nil? %)))
-       (clojure.string/join " ")))
-;;
-;; multi method row-to-string
-;;
-(defmulti row-to-string (fn [data] (class data)))
-(defmethod row-to-string java.lang.String [data]
-  (str data))
-(defmethod row-to-string org.apache.poi.hssf.usermodel.HSSFRow [data]
-  (xls-row-to-line data))
-(defmethod row-to-string org.apache.poi.xssf.usermodel.XSSFRow [data]
-  (xls-row-to-line data))
-(defmethod row-to-string :default [data]
-  "")
-;;
-;; multi method row-to-tokens
-;;
-(defmulti row-to-tokens (fn [data & args] (class data)))
-(defmethod row-to-tokens java.lang.String [data re-separator]
-  (clojure.string/split data re-separator))
-(defmethod row-to-tokens org.apache.poi.hssf.usermodel.HSSFRow [data & args]
-  (xls-row-to-tokens data))
-(defmethod row-to-tokens :default [data & args]
-  [])
+
 ;;
 ;; split line into separate tokens
 ;;
@@ -394,13 +396,13 @@
   true)
 
 (defn csv-outputs-to-file [filename outputs-csv-lines]
-  (map #(csv-output-to-file filename %1) outputs-csv-lines)
+  (doall (map #(csv-output-to-file filename %1) outputs-csv-lines))
   true)
 ;;
 ;; ADD DEFAULT VALUES TO ALL THE SPEC
 ;;
 (defn add-defaults-to-specs [specs]
-  {:global (merge  {:token-separator ","
+  {:global (merge  {:token-separator (str (char 31))
                     :thousand-separator nil
                     :decimal-separator "."
                     :header-lines 0
@@ -418,9 +420,17 @@
 (defn process-lines [specs lines]
   (->> lines
        (wrap-text-lines)
-       (skip-lines specs)
+       (skip-lines (:skip specs))
        (remove-skip-lines)
-       (tokenizer-lines specs)))
+       (tokenize-lines (re-pattern (get-in specs [:global :token-separator])))
+       (lines-to-cells (:tokens specs))
+       (merge-lines-with-column-specs (:columns specs))
+       (add-new-column-specs-lines (:columns specs))
+       (transform-lines (:columns specs))
+       (output-lines specs)
+       (clean-outputs-lines)
+       (outputs-to-csv-lines (get-in specs [:global :output-separator]))
+       ))
 
 (defn convert-file [input-filename specs output-filename sheetname]
   (let [params {:filename input-filename :sheetname sheetname}
@@ -430,7 +440,7 @@
          (wrap-text-lines)
          (skip-lines (:skip specs*))
          (remove-skip-lines)
-         (tokenize-lines (re-pattern (get-in specs* [:global :token-separator])))
+          (tokenize-lines (re-pattern (get-in specs* [:global :token-separator])))
          (lines-to-cells (:tokens specs*))
          (merge-lines-with-column-specs (:columns specs*))
          (add-new-column-specs-lines (:columns specs*))

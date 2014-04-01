@@ -1,4 +1,4 @@
-(ns paxparser.core
+(ns parser.core
   (:use [clojure.java.io])
   (:use [dk.ative.docjure.spreadsheet])
   (:import (org.apache.poi.ss.usermodel Row Cell DataFormatter DateUtil)))

@@ -37,12 +37,12 @@
   (fn [value]
     (some #(substring? % value) words)))
 
-(defn convert-to-int []
-  (fn [value & thousand-separator]
+(defn convert-to-int [& thousand-separator]
+  (fn [specs value]
     (if (not (empty? value))
       (if (nil? thousand-separator)
-        (read-string (clojure.string/replace value thousand-separator ""))
-        (read-string value))
+        (read-string value)
+        (read-string (clojure.string/replace value thousand-separator "")))
       nil
       )))
 
@@ -73,7 +73,7 @@
       (.formatCellValue cell)))
 (defn xls-row-to-tokens [^Row row]
   (->> (map #(.getCell row % Row/RETURN_BLANK_AS_NULL) (range 0 (.getLastCellNum row)))
-       (map #(if (nil? %) nil (xls-cell-to-value %)))))
+       (map #(if (nil? %) " " (xls-cell-to-value %)))))
 (defn xls-row-to-line [^Row row]
   (->> row
        (xls-row-to-tokens)
@@ -98,6 +98,8 @@
 (defmethod row-to-tokens java.lang.String [data re-separator]
   (clojure.string/split data re-separator))
 (defmethod row-to-tokens org.apache.poi.hssf.usermodel.HSSFRow [data & args]
+  (xls-row-to-tokens data))
+(defmethod row-to-tokens org.apache.poi.xssf.usermodel.XSSFRow [data]
   (xls-row-to-tokens data))
 (defmethod row-to-tokens :default [data & args]
   [])
@@ -284,8 +286,7 @@
     cell))
 
 (defn transform-line [specs line]
-  (merge line {:columns (map #(transform-cell specs %) (:columns line))})
-  )
+  (merge line {:columns (map #(transform-cell specs %) (:columns line))}))
 
 (defn transform-lines [specs lines]
   (map #(transform-line specs %1) lines))
@@ -405,9 +406,6 @@
   {:global (merge  {:token-separator (str (char 31))
                     :thousand-separator nil
                     :decimal-separator "."
-                    :header-lines 0
-                    :converted-lines 0
-                    :footer-lines 0
                     :output-separator "\t"}
                    (:global specs))
    :skip (:skip specs)
@@ -426,7 +424,7 @@
        (lines-to-cells (:tokens specs))
        (merge-lines-with-column-specs (:columns specs))
        (add-new-column-specs-lines (:columns specs))
-       (transform-lines (:columns specs))
+       (transform-lines specs)
        (output-lines specs)
        (clean-outputs-lines)
        (outputs-to-csv-lines (get-in specs [:global :output-separator]))
@@ -440,11 +438,11 @@
          (wrap-text-lines)
          (skip-lines (:skip specs*))
          (remove-skip-lines)
-          (tokenize-lines (re-pattern (get-in specs* [:global :token-separator])))
+         (tokenize-lines (re-pattern (get-in specs* [:global :token-separator])))
          (lines-to-cells (:tokens specs*))
          (merge-lines-with-column-specs (:columns specs*))
          (add-new-column-specs-lines (:columns specs*))
-         (transform-lines (:columns specs*))
+         (transform-lines specs*)
          (output-lines specs*)
          (clean-outputs-lines)
          (outputs-to-csv-lines (get-in specs* [:global :output-separator]))

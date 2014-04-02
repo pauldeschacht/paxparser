@@ -1,6 +1,6 @@
 (ns parser.pax.dsl.generic-pax-output)
 
-(def pax-output
+(defn generic-pax-output []
   [{:name "paxtype"}
    {:name "paxsource"}
    {:name "fullname"}
@@ -65,3 +65,17 @@
    {:name "totint"}
    {:name "tottot"}
    ])
+
+(defn merge-pax-element [list-element update]
+  (if (= (:name list-element)
+         (:name update))
+    (merge list-element update)
+    list-element)
+  )
+
+(defn merge-pax [list update]
+  (map #(merge-pax-element % update) list))
+
+(defn merge-pax-output [list updates]
+  (reduce merge-pax list updates)
+  )

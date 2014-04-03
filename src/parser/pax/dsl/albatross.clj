@@ -88,18 +88,36 @@
                                 {:name "tottot" :source "2013_tottot"}
                                 {:name "totdom" :source "2013_totdom"}
                                 {:name "totint" :source "2013_totint"}])
-             ;; (merge-pax-output (generic-pax-output)
-             ;;                   [{:name "valid-from" :value "2012-01-01"}
-             ;;                    {:name "valid-to"   :value "2012-12-31"}
-             ;;                    {:name "tottot" :source "2012_tottot"}
-             ;;                    {:name "totdom" :source "2012_totdom"}
-             ;;                    {:name "totint" :source "2012_totint"}])
-             ;; (merge-pax-output (generic-pax-output)
-             ;;                   [{:name "valid-from" :value "2011-01-01"}
-             ;;                    {:name "valid-to"   :value "2011-12-31"}
-             ;;                    {:name "tottot" :source "2011_tottot"}
-             ;;                    {:name "totdom" :source "2011_totdom"}
-             ;;                    {:name "totint" :source "2011_totint"}])
+             (merge-pax-output (generic-pax-output)
+                               [{:name "valid-from" :value "2012-01-01"}
+                                {:name "valid-to"   :value "2012-12-31"}
+                                {:name "tottot" :source "2012_tottot"}
+                                {:name "totdom" :source "2012_totdom"}
+                                {:name "totint" :source "2012_totint"}])
+             (merge-pax-output (generic-pax-output)
+                               [{:name "valid-from" :value "2011-01-01"}
+                                {:name "valid-to"   :value "2011-12-31"}
+                                {:name "tottot" :source "2011_tottot"}
+                                {:name "totdom" :source "2011_totdom"}
+                                {:name "totint" :source "2011_totint"}])
+             (merge-pax-output (generic-pax-output)
+                               [{:name "valid-from" :value "2010-01-01"}
+                                {:name "valid-to"   :value "2010-12-31"}
+                                {:name "tottot" :source "2010_tottot"}
+                                {:name "totdom" :source "2010_totdom"}
+                                {:name "totint" :source "2010_totint"}])
+             (merge-pax-output (generic-pax-output)
+                               [{:name "valid-from" :value "2009-01-01"}
+                                {:name "valid-to"   :value "2009-12-31"}
+                                {:name "tottot" :source "2009_tottot"}
+                                {:name "totdom" :source "2009_totdom"}
+                                {:name "totint" :source "2009_totint"}])
+             (merge-pax-output (generic-pax-output)
+                               [{:name "valid-from" :value "2008-01-01"}
+                                {:name "valid-to"   :value "2008-12-31"}
+                                {:name "tottot" :source "2008_tottot"}
+                                {:name "totdom" :source "2008_totdom"}
+                                {:name "totint" :source "2008_totint"}])
 
 
              ]
@@ -113,7 +131,7 @@
         file-info (extract-file-information f1)
         specs (merge albatross-spec {:global (merge (:global albatross-spec) {:file-info file-info})})
         specs* (add-defaults-to-specs specs)
-        params {:filename f1 :sheetname sheetname}
+        params {:filename f1 :sheetname sheetname :max 200}
         lines (read-lines params)
         ]
 
@@ -129,6 +147,6 @@
          (output-lines specs*)
          (clean-outputs-lines)
          (outputs-to-csv-lines (get-in specs* [:global :output-separator]))
-         ;(csv-outputs-to-file f2)
+         (csv-outputs-to-file f2)
          )
     ))

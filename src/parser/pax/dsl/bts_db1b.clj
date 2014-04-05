@@ -1,7 +1,4 @@
-(ns parser.pax.dsl.bts-db1b
-  (:use [parser.core])
-  (:use [parser.pax.core])
-  (:use [parser.pax.dsl.generic-pax-output]))
+
 
 (defn bts-trim []
   (fn [specs value]
@@ -30,7 +27,7 @@
             {:index 9 :name "origin-country-iata"}
             {:index 17 :name "destination-airport-iata"}
             {:index 18 :name "destination-country-iata"}
-            {:index 33 :name "pax"}
+            {:index 33 :name "tottot"}
             ]
    
    :columns [{:name "paxtype" :value "airportpair"}
@@ -40,7 +37,7 @@
              {:name "valid-from" :transform (get-valid-from)}
              {:name "valid-to" :transform (get-valid-to)}
              {:name "metric" :value "pax"}
-             {:name "segment" :value true}
+             {:name "segment" :value false}
              
              {:name "origin-airport-iata" :transform (bts-clean)}
              {:name "origin-country-iata" :transform (bts-clean)}
@@ -54,15 +51,15 @@
    })
 
 (defn test-bts-db1b []
-  (let [f1 "/home/pdeschacht/dev/paxparser/test/public-data/2014/02/BTS/DB1B/2013/Q3/BTSDB1B.csv"
-        f2 "/home/pdeschacht/dev/paxparser/test/public-data/2014/02/BTS/DB1B/2013/Q3/test.csv"
+  (let [f1 "test/public-data/2014/02/BTS/DB1B/2013/Q3/BTSDB1B.csv"
+        f2 "test/public-data/2014/02/BTS/DB1B/2013/Q3/test.csv"
         sheetname ""
         file-info (extract-file-information f1)
         specs (merge bts-db1b-spec
                      {:global (merge (:global bts-db1b-spec)
                                      {:file-info file-info})})
         specs* (add-defaults-to-specs specs)
-        params {:filename f1 :sheetname sheetname :max 200}
+        params {:filename f1 :sheetname sheetname}
         lines (read-lines params)
         ]
 
@@ -77,6 +74,7 @@
          (map #(dissoc %1 :tokens))
          (merge-lines-with-column-specs (:columns specs*))
          (add-new-column-specs-lines (:columns specs*))
+         (map #(dissoc %1 :cells))
          (transform-lines specs*)
          (repeat-down-lines specs*)
          (output-lines specs*)

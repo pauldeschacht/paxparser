@@ -1,143 +1,152 @@
 (ns parser.pax.dsl.albatross
-  (:use [parser.pax.core])
   (:use [parser.core])
+  (:use [parser.pax.core])
   (:use [parser.pax.dsl.generic-pax-output]))
+
+(defn albatross-convert-to-int []
+  (fn [specs value]
+    (if (empty? (clojure.string/trim value))
+      nil
+      (try
+        (Integer/parseInt value)
+        (catch Exception e (println (.getMessage e)))))))
 
 (def albatross-spec
   {:global {
             :thousand-separator nil
             :decimal-separator nil
-            :output-separator "\t"
+            :output-separator ","
             }
-   :header [(line-contains? ["Total" "Other"])
-            ]
-   :tokens [{:index 1 :name "iata"}
-           {:index 2 :name "icao"}
-           {:index 3 :name "airportname"}
-           {:index 4 :name "country"}
-           {:index 5 :name "region"}
-           
-           {:index 10 :name "2013_tot"}
-           {:index 11 :name "2013_dom"}
-           {:index 12 :name "2013_int"}
-
-           {:index 14 :name "2012_tot"}
-           {:index 15 :name "2012_dom"}
-           {:index 16 :name "2012_int"}
-
-           {:index 18 :name "2011_tot"}
-           {:index 19 :name "2011_dom"}
-           {:index 20 :name "2011_int"}
-
-           {:index 22 :name "2010_tot"}
-           {:index 23 :name "2010_dom"}
-           {:index 24 :name "2010_int"}
-
-           {:index 26 :name "2009_tot"}
-           {:index 27 :name "2009_dom"}
-           {:index 28 :name "2009_int"}
-
-           {:index 30 :name "2008_tot"}
-           {:index 31 :name "2008_dom"}
-           {:index 32 :name "2008_int"}
+   :skip [(line-contains? ["Total" "Other"])]
+   
+   :tokens [{:index 1 :name "origin-airport-iata"}
+            {:index 2 :name "origin-airport-icao"}
+            {:index 3 :name "origin-airport-name"}
+            {:index 4 :name "origin-country-name"}
+            {:index 5 :name "region"}
+            
+            {:index 10 :name "2013_tottot"}
+            {:index 11 :name "2013_totdom"}
+            {:index 12 :name "2013_totint"}
+            
+            {:index 14 :name "2012_tottot"}
+            {:index 15 :name "2012_totdom"}
+            {:index 16 :name "2012_totint"}
+            
+            {:index 18 :name "2011_tottot"}
+            {:index 19 :name "2011_totdom"}
+            {:index 20 :name "2011_totint"}
+            
+            {:index 22 :name "2010_tottot"}
+            {:index 23 :name "2010_totdom"}
+            {:index 24 :name "2010_totint"}
+            
+            {:index 26 :name "2009_tottot"}
+            {:index 27 :name "2009_totdom"}
+            {:index 28 :name "2009_totint"}
+            
+            {:index 30 :name "2008_tottot"}
+            {:index 31 :name "2008_totdom"}
+            {:index 32 :name "2008_totint"}
            ]
    :columns [
-             {:index 10 :name "2013_tot" :transform (convert-to-int)}
-             {:index 11 :name "2013_dom" :transform (convert-to-int)}
-             {:index 12 :name "2013_int" :transform (convert-to-int)}
+             {:name "paxtype"   :value "airport"}
+             {:name "paxsource" :value "Albatross"}
+             {:name "fullname"  :transform (get-fullname)}
+             {:name "capture-date"   :transform (get-capture-date)}
+
+             {:name "metric" :value "pax"}
+             {:name "segment" :value nil}
+
+             {:name "2013_tottot" :transform (albatross-convert-to-int)}
+             {:name "2013_totdom" :transform (albatross-convert-to-int)}
+             {:name "2013_totint" :transform (albatross-convert-to-int)}
              
-             {:index 14 :name "2012_tot" :transform (convert-to-int)}
-             {:index 15 :name "2012_dom" :transform (convert-to-int)}
-             {:index 16 :name "2012_int" :transform (convert-to-int)}
+             {:name "2012_tottot" :transform (albatross-convert-to-int)}
+             {:name "2012_totdom" :transform (albatross-convert-to-int)}
+             {:name "2012_totint" :transform (albatross-convert-to-int)}
              
-             {:index 18 :name "2011_tot" :transform (convert-to-int)}
-             {:index 19 :name "2011_dom" :transform (convert-to-int)}
-             {:index 20 :name "2011_int" :transform (convert-to-int)}
+             {:name "2011_tottot" :transform (albatross-convert-to-int)}
+             {:name "2011_totdom" :transform (albatross-convert-to-int)}
+             {:name "2011_totint" :transform (albatross-convert-to-int)}
              
-             {:index 22 :name "2010_tot" :transform (convert-to-int)}
-             {:index 23 :name "2010_dom" :transform (convert-to-int)}
-             {:index 24 :name "2010_int" :transform (convert-to-int)}
+             {:name "2010_tottot" :transform (albatross-convert-to-int)}
+             {:name "2010_totdom" :transform (albatross-convert-to-int)}
+             {:name "2010_totint" :transform (albatross-convert-to-int)}
              
-             {:index 26 :name "2009_tot" :transform (convert-to-int)}
-             {:index 27 :name "2009_dom" :transform (convert-to-int)}
-             {:index 28 :name "2009_int" :transform (convert-to-int)}
+             {:name "2009_tottot" :transform (albatross-convert-to-int)}
+             {:name "2009_totdom" :transform (albatross-convert-to-int)}
+             {:name "2009_totint" :transform (albatross-convert-to-int)}
              
-             {:index 30 :name "2008_tot" :transform (convert-to-int)}
-             {:index 31 :name "2008_dom" :transform (convert-to-int)} 
-             {:index 32 :name "2008_int" :transform (convert-to-int)}
+             {:name "2008_tottot" :transform (albatross-convert-to-int)}
+             {:name "2008_totdom" :transform (albatross-convert-to-int)} 
+             {:name "2008_totint" :transform (albatross-convert-to-int)}
              ]
-   :outputs [
-             [
-              {:name "type" :value "airport"}
-              {:name "iata"}
-              {:name "icao"}
-              {:name "airportname"}
-              {:name "country"}
-              {:name "region"}
-              {:name "period" :value "2013"}
-              {:name "2013_tot"}
-              {:name "2013_dom"}
-              {:name "2013_int"}             
-            ]
-             [
-              {:name "type" :value "airport"}
-              {:name "iata"}
-              {:name "icao"}
-              {:name "airportname"}
-              {:name "country"}
-              {:name "region"}
-              {:name "period" :value "2012"}
-              {:name "2012_tot"}
-              {:name "2012_dom"}
-              {:name "2012_int"}             
-            ]
-             [
-              {:name "type" :value "airport"}
-              {:name "iata"}
-              {:name "icao"}
-              {:name "airportname"}
-              {:name "country"}
-              {:name "region"}
-              {:name "period" :value "2011"}
-              {:name "2011_tot"}
-              {:name "2011_dom"}
-              {:name "2011_int"}             
-            ]
-             [
-              {:name "type" :value "airport"}
-              {:name "iata"}
-              {:name "icao"}
-              {:name "airportname"}
-              {:name "country"}
-              {:name "region"}
-              {:name "period" :value "2010"}
-              {:name "2010_tot"}
-              {:name "2010_dom"}
-              {:name "2010_int"}             
-            ]
-             [
-              {:name "type" :value "airport"}
-              {:name "iata"}
-              {:name "icao"}
-              {:name "airportname"}
-              {:name "country"}
-              {:name "region"}
-              {:name "period" :value "2009"}
-              {:name "2009_tot"}
-              {:name "2009_dom"}
-              {:name "2009_int"}             
-              ]
-             [
-              {:name "type" :value "airport"}
-              {:name "iata"}
-              {:name "icao"}
-              {:name "airportname"}
-              {:name "country"}
-              {:name "region"}
-              {:name "period" :value "2008"}
-              {:name "2008_tot"}
-              {:name "2008_dom"}
-              {:name "2008_int"}             
-              ]
+   :outputs [(merge-pax-output (generic-pax-output)
+                               [{:name "valid-from" :value "2013-01-01"}
+                                {:name "valid-to"   :value "2013-12-31"}
+                                {:name "tottot" :source "2013_tottot"}
+                                {:name "totdom" :source "2013_totdom"}
+                                {:name "totint" :source "2013_totint"}])
+             (merge-pax-output (generic-pax-output)
+                               [{:name "valid-from" :value "2012-01-01"}
+                                {:name "valid-to"   :value "2012-12-31"}
+                                {:name "tottot" :source "2012_tottot"}
+                                {:name "totdom" :source "2012_totdom"}
+                                {:name "totint" :source "2012_totint"}])
+             (merge-pax-output (generic-pax-output)
+                               [{:name "valid-from" :value "2011-01-01"}
+                                {:name "valid-to"   :value "2011-12-31"}
+                                {:name "tottot" :source "2011_tottot"}
+                                {:name "totdom" :source "2011_totdom"}
+                                {:name "totint" :source "2011_totint"}])
+             (merge-pax-output (generic-pax-output)
+                               [{:name "valid-from" :value "2010-01-01"}
+                                {:name "valid-to"   :value "2010-12-31"}
+                                {:name "tottot" :source "2010_tottot"}
+                                {:name "totdom" :source "2010_totdom"}
+                                {:name "totint" :source "2010_totint"}])
+             (merge-pax-output (generic-pax-output)
+                               [{:name "valid-from" :value "2009-01-01"}
+                                {:name "valid-to"   :value "2009-12-31"}
+                                {:name "tottot" :source "2009_tottot"}
+                                {:name "totdom" :source "2009_totdom"}
+                                {:name "totint" :source "2009_totint"}])
+             (merge-pax-output (generic-pax-output)
+                               [{:name "valid-from" :value "2008-01-01"}
+                                {:name "valid-to"   :value "2008-12-31"}
+                                {:name "tottot" :source "2008_tottot"}
+                                {:name "totdom" :source "2008_totdom"}
+                                {:name "totint" :source "2008_totint"}])
+
+
              ]
    })
+
+
+(defn test-albatross []
+  (let [f1 "/home/pdeschacht/dev/paxparser/test/private-data/2014/02/Albatross/2014/02/Albatross.xlsx"
+        f2 "/home/pdeschacht/dev/paxparser/test/private-data/2014/02/Albatross/2014/02/test.csv"
+        sheetname "Sheet1"
+        file-info (extract-file-information f1)
+        specs (merge albatross-spec {:global (merge (:global albatross-spec) {:file-info file-info})})
+        specs* (add-defaults-to-specs specs)
+        params {:filename f1 :sheetname sheetname :max 200}
+        lines (read-lines params)
+        ]
+
+    (->> lines
+         (wrap-text-lines)
+         (skip-lines (:skip specs*))
+         (remove-skip-lines)
+         (tokenize-lines (re-pattern (get-in specs* [:global :token-separator])))
+         (lines-to-cells (:tokens specs*))
+         (merge-lines-with-column-specs (:columns specs*))
+         (add-new-column-specs-lines (:columns specs*))
+         (transform-lines specs*)
+         (output-lines specs*)
+         (clean-outputs-lines)
+         (outputs-to-csv-lines (get-in specs* [:global :output-separator]))
+         (csv-outputs-to-file f2)
+         )
+    ))

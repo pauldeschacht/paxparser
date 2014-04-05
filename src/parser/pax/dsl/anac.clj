@@ -1,34 +1,81 @@
 (ns parser.pax.dsl.anac
-(:use [parser.core])
-(:use [parser.pax.core])
-(:use [parser.pax.dsl.generic-pax-output));;
+  (:use [parser.core])
+  (:use [parser.pax.core])
+  (:use [parser.pax.dsl.generic-pax-output]))
+;;
 ;; ANAC
 ;;
 (defn anac-trim []
   (fn [ctxt value]
-    (clojure.string/trim value)))
+    (if (not (empty? value))
+      (clojure.string/trim value)
+      value)))
 
-(def anac
+(defn anac-convert-to-int []
+  (fn [specs value]
+    (if (empty? value)
+      nil
+      (let [value* (clojure.string/replace value #"[\.,]" "")]
+        (try
+          (Integer/parseInt value*)
+          (catch Exception e (do (println (.getMessage e))
+                                 nil)))
+        ))))
+  
+
+(def anac-spec
   {:global {:thousand-separator "."
             :decimal-separator ""
+            :output-separator ","
             }
 
-   :input [{:index 0 :name "icao_name" :split (split-into-cells ["icao" "name"] "-")}
-           {:index 4 :name "domtot"}
-           {:index 5 :name "inttot"}
-           {:index 6 :name "tottot"}
-           ]
-   :columns [{:name "icao" :skip-row (cell-contains? "Superintendência") :transform (anac-trim)}
-             {:name "name" :transform (anac-trim)}]
-
-   :footer [(line-contains? ["INFRAERO"])]
+   :skip [(line-contains? ["Dependência" "Superintendência" "INFRAERO"])]
    
-   :output [{:name "type" :value "airport"}
-            {:name "iata" :value ""}
-            {:name "icao"}
-            {:name "name"}
-            {:name "region" :value ""}
-            {:name "domtot"}
-            {:name "inttot"}
-            {:name "tottot"}]
+   :tokens [{:index 0 :name "icao_name" :split (split-into-cells ["origin-airport-icao" "origin-airport-name"] "-")}
+            {:index 4 :name "totdom"}
+            {:index 5 :name "totint"}
+            {:index 6 :name "tottot"}
+           ]
+   :columns [{:name "paxtype" :value "airport"}
+             {:name "paxsource" :value "ANAC"}
+             {:name "fullname" :transform (get-fullname)}
+             {:name "capture-date" :transform (get-capture-date)}
+             {:name "valid-from" :transform (get-valid-from)}
+             {:name "valid-to" :transform (get-valid-to)}
+             {:name "metric" :value "pax"}
+             {:name "segment" :value nil}
+             {:name "origin-aiport-icao" :transform (anac-trim)}
+             {:name "origin-airport-name" :transform (anac-trim)}
+             {:name "totdom" :transform (anac-convert-to-int)}
+             {:name "totint" :transform (anac-convert-to-int)}
+             {:name "tottot" :transform (anac-convert-to-int)}]
+   :output (generic-pax-output)
    })
+
+(defn test-anac []
+  (let [f1 "/home/pdeschacht/dev/paxparser/test/public-data/2014/02/ANAC/2013/12/ANAC.xlsx"
+        f2 "/home/pdeschacht/dev/paxparser/test/public-data/2014/02/ANAC/2013/12/test.csv"
+        sheetname "Sheet1"
+        file-info (extract-file-information f1)
+        specs (merge anac-spec {:global (merge (:global anac-spec) {:file-info file-info})})
+        specs* (add-defaults-to-specs specs)
+        params {:filename f1 :sheetname sheetname :max 200}
+        lines (read-lines params)
+        ]
+
+    (->> lines
+         (wrap-text-lines)
+         (skip-lines (:skip specs*))
+         (remove-skip-lines)
+         (tokenize-lines (re-pattern (get-in specs* [:global :token-separator])))
+         (lines-to-cells (:tokens specs*))
+         (merge-lines-with-column-specs (:columns specs*))
+         (add-new-column-specs-lines (:columns specs*))
+         (transform-lines specs*)
+         (output-lines specs*)
+         (clean-outputs-lines)
+         (outputs-to-csv-lines (get-in specs* [:global :output-separator]))
+         (csv-outputs-to-file f2)
+         )
+    ))
+

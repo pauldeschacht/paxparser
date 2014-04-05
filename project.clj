@@ -6,4 +6,7 @@
   :dependencies [[org.clojure/clojure "1.5.1"]
                  [dk.ative/docjure "1.6.0"]
                  [clj-time "0.6.0"]
-                 ])
+                 ]
+  :jvm-opts ["-Xms4G" "-Xmx4G"]
+  :main parser.main
+  )

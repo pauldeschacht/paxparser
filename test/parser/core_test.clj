@@ -1,6 +1,6 @@
-(ns paxparser.core-test
+(ns parser.core-test
   (:use clojure.test
-        paxparser.core))
+        parser.core))
 
 (defn get-test-lines []
   (let [
@@ -162,7 +162,7 @@
                       (lines-to-cells (:tokens specs))
                       (merge-lines-with-column-specs (:columns specs))
                       (add-new-column-specs-lines (:columns specs))
-                      (transform-lines (:columns specs))
+                      (transform-lines specs)
                       )
           columns2 (:columns (nth lines* 1))
           ]
@@ -186,7 +186,7 @@
          (lines-to-cells (:tokens specs))
          (merge-lines-with-column-specs (:columns specs))
          (add-new-column-specs-lines (:columns specs))
-         (transform-lines (:columns specs))
+         (transform-lines specs)
          )))
 
 (deftest test-output
@@ -196,12 +196,13 @@
           csv (->> lines
                    (output-lines specs)
                    (clean-outputs-lines)
-                   (output-to-csv-lines ",")
+                   (outputs-to-csv-lines ",")
+                   (first)
                    )
           
           ]
-      (is (= (first (first  csv)) ",Id,Country," ))
-      (is (= (first  csv) '(",Id,Country," ",50,Belgium," ",70,France,") ))
+      (is (= (first csv) ",Id,Country," ))
+      (is (= csv '(",Id,Country," ",50,Belgium," ",70,France,") ))
       )
 
     ))
@@ -249,6 +250,3 @@
     (is (= ""    (:value (nth (:columns (nth lines* 3))  2 ))))
     )
   )
-(deftest a-test
-  (testing "FIXME, I fail."
-    (is (= 0 1))))

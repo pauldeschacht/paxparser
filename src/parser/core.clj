@@ -38,11 +38,30 @@
     (some #(substring? % value) words)))
 
 (defn convert-to-int []
-  (fn [value & thousand-separator]
+  (fn [specs value]
     (if (not (empty? value))
-      (if (nil? thousand-separator)
-        (read-string (clojure.string/replace value thousand-separator ""))
-        (read-string value))
+      (try
+        (let [thousand-separator (get-in specs [:global :thousand-separator])]
+          (if (empty? thousand-separator)
+            (int (Double/parseDouble value))
+            (int (Double/parseDouble (clojure.string/replace value thousand-separator "")))))
+        (catch Exception e (println (.getMessage e)))
+        )
+      
+      nil
+      )))
+
+(defn convert-to-double []
+  (fn [specs value]
+    (if (not (empty? value))
+      (try
+        (let [thousand-separator (get-in specs [:global :thousand-separator])]
+          (if (empty? thousand-separator)
+            (Double/parseDouble value)
+            (Double/parseDouble (clojure.string/replace value thousand-separator ""))))
+        (catch Exception e (println (.getMessage e)))
+        )
+      
       nil
       )))
 
@@ -69,11 +88,13 @@
 ;; extract values from XLS(X)
 ;;
 (defn xls-cell-to-value [^Cell cell]
-  (-> (DataFormatter.)
-      (.formatCellValue cell)))
+  (read-cell cell)
+  ;; (-> (DataFormatter.)
+  ;;     (.formatCellValue cell))
+  )
 (defn xls-row-to-tokens [^Row row]
   (->> (map #(.getCell row % Row/RETURN_BLANK_AS_NULL) (range 0 (.getLastCellNum row)))
-       (map #(if (nil? %) nil (xls-cell-to-value %)))))
+       (map #(if (nil? %) "" (xls-cell-to-value %)))))
 (defn xls-row-to-line [^Row row]
   (->> row
        (xls-row-to-tokens)
@@ -99,6 +120,8 @@
   (clojure.string/split data re-separator))
 (defmethod row-to-tokens org.apache.poi.hssf.usermodel.HSSFRow [data & args]
   (xls-row-to-tokens data))
+(defmethod row-to-tokens org.apache.poi.xssf.usermodel.XSSFRow [data]
+  (xls-row-to-tokens data))
 (defmethod row-to-tokens :default [data & args]
   [])
 
@@ -117,15 +140,27 @@
   (->> sheet
        (row-seq)
        ))
+
+(defn lazy-file-lines [filename]
+  (letfn [(helper [rdr]
+            (lazy-seq
+             (if-let [line (.readLine rdr)]
+               (cons line (helper rdr))
+               (do (.close rdr) nil))))]
+    (helper (clojure.java.io/reader filename))))
+
 (defmulti read-lines
   (fn [params]
     (get-file-extension params) ;;?? pass params and not (:filename params)
     ))
 (defmethod read-lines :csv [{:keys [filename max]}]
-  (let [lines (clojure.string/split (slurp filename) #"\n")]
+  (let [
+        ;lines (clojure.string/split (slurp filename) #"\n")
+        ]
     (if (nil? max)
-      lines
-      (take max lines))))
+      (lazy-file-lines filename)
+      (take max (lazy-file-lines filename)))))
+
 (defmethod read-lines :xls [{:keys [filename max]}]
   (let [workbook (load-workbook filename)
         sheet (select-sheet 0 workbook)
@@ -169,6 +204,14 @@
 
 (defn remove-skip-lines [lines]
   (filter #(not (true? (:skip %1))) lines))
+
+(defn take-line [stop-fns line]
+  (not (some true? (map #(%1 (:text line)) stop-fns))))
+
+(defn stop-after [stop-fns lines]
+  (let [pred (partial take-line stop-fns)]
+    (take-while pred lines))
+  )
 ;;
 ;; TOKENIZER
 ;; ---------
@@ -284,8 +327,7 @@
     cell))
 
 (defn transform-line [specs line]
-  (merge line {:columns (map #(transform-cell specs %) (:columns line))})
-  )
+  (merge line {:columns (map #(transform-cell specs %) (:columns line))}))
 
 (defn transform-lines [specs lines]
   (map #(transform-line specs %1) lines))
@@ -303,19 +345,28 @@
 
 (defn repeat-down-line [specs prev-line line]
   (if (nil? prev-line)
-    (merge line {:columns (:cells line)})
-    (merge line {:columns (map #(repeat-down-cell %1 %2) (:cells prev-line) (:cells line))})))
+    line
+    (merge line {:columns (map #(repeat-down-cell %1 %2) (:columns prev-line) (:columns line))})))
 
-(defn repeat-down-lines [specs lines]
-  (map #(repeat-down-line specs %1 %2) (cons nil lines) lines))
+(defn repeat-down-lines
+  ([specs lines]
+     (repeat-down-lines specs nil lines))
+  ([specs prev-line lines]
+     (lazy-seq
+      (when-let [s (seq lines)]
+        (let [repeat-line (repeat-down-line specs prev-line (first s))]
+          (cons repeat-line
+                (repeat-down-lines specs repeat-line (rest s))))))))
 
-(defn columns-lines [specs lines]
-  (->> lines
-       (map #(merge-line-with-column-specs (:columns specs) %1))
-       (map #(add-new-column-specs-lines specs %1))
-       (map #(transform-line specs %1))
-       (repeat-down-lines lines)
-       ))
+;; (defn repeat-down-lines [specs lines]
+;;   (let [acc {:prev nil :result []}]
+;;     (:result (reduce (fn [acc line]
+;;                        (let [repeated-line (repeat-down-line specs (:prev acc) line)]
+;;                          {:prev repeated-line
+;;                           :result  (conj (:result acc) repeated-line)
+;;                           })
+;;                        ) acc lines))))
+
 ;;
 ;; OUTPUT
 ;; ------
@@ -358,7 +409,7 @@
   (map #(single-output-lines %1 lines) multi-output-specs))
 
 (defn output-lines [specs lines]
-  (if (contains? specs :output)
+  (if (and (contains? specs :output) (not (empty? (:output specs))))
     (multi-output-lines [(:output specs)] lines)
     (multi-output-lines (:outputs specs)  lines)))
 
@@ -388,7 +439,7 @@
 
 (defn csv-output-to-file [filename csv-lines]
   (with-open [wrtr (writer filename :append true)]
-    (doall (map (fn [line]
+    (dorun (map (fn [line]
                   (.write wrtr line)
                   (.write wrtr "\n"))
                 csv-lines
@@ -396,7 +447,7 @@
   true)
 
 (defn csv-outputs-to-file [filename outputs-csv-lines]
-  (doall (map #(csv-output-to-file filename %1) outputs-csv-lines))
+  (dorun (map #(csv-output-to-file filename %1) outputs-csv-lines))
   true)
 ;;
 ;; ADD DEFAULT VALUES TO ALL THE SPEC
@@ -405,12 +456,10 @@
   {:global (merge  {:token-separator (str (char 31))
                     :thousand-separator nil
                     :decimal-separator "."
-                    :header-lines 0
-                    :converted-lines 0
-                    :footer-lines 0
                     :output-separator "\t"}
                    (:global specs))
    :skip (:skip specs)
+   :stop (:stop specs)
    :tokens (complete-token-specs (:tokens specs))
    :columns (:columns specs)
    :output (:output specs)
@@ -426,7 +475,8 @@
        (lines-to-cells (:tokens specs))
        (merge-lines-with-column-specs (:columns specs))
        (add-new-column-specs-lines (:columns specs))
-       (transform-lines (:columns specs))
+       (transform-lines specs)
+       (repeat-down-lines specs)
        (output-lines specs)
        (clean-outputs-lines)
        (outputs-to-csv-lines (get-in specs [:global :output-separator]))
@@ -440,11 +490,13 @@
          (wrap-text-lines)
          (skip-lines (:skip specs*))
          (remove-skip-lines)
-          (tokenize-lines (re-pattern (get-in specs* [:global :token-separator])))
+         (stop-after (:stop specs*))
+         (tokenize-lines (re-pattern (get-in specs* [:global :token-separator])))
          (lines-to-cells (:tokens specs*))
          (merge-lines-with-column-specs (:columns specs*))
          (add-new-column-specs-lines (:columns specs*))
-         (transform-lines (:columns specs*))
+         (transform-lines specs*)
+         (repeat-down-lines specs*)
          (output-lines specs*)
          (clean-outputs-lines)
          (outputs-to-csv-lines (get-in specs* [:global :output-separator]))

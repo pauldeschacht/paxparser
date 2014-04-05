@@ -1,5 +1,6 @@
 (ns parser.pax.core
-  (:use [clj-time.core :as t])
+  (:use [parser.core :as parser])
+  (:use [clj-time.core :exclude (second extend) :as t])
   (:use [clj-time.format :as f]))
 
 (defn capture-date-str [year month]
@@ -74,7 +75,7 @@
       nil)))
 
 (defn get-re-list []
-(let [p-source "([a-zA-Z0-9]*)"
+(let [p-source "([a-zA-Z0-9-_]*)"
       p-file "([a-zA-Z0-9-_.]*)$"
       p-folder "([a-zA-Z0-9-_]*)"
       p-capture "(\\d{4})/(\\d{2})"
@@ -100,6 +101,13 @@
   (merge {:type (:type re)
           :result (re-find (:re re) s)}))
 
+(defn dates-to-str [file-info]
+  (merge file-info
+         {:capture-str (f/unparse (f/formatters :date) (:capture file-info))
+          :valid-from-str (f/unparse (f/formatters :date) (t/start (:valid file-info)))
+          :valid-to-str (f/unparse (f/formatters :date) (t/end (:valid file-info)))})
+  )
+
 (defn extract-file-information [filename]
   (let []
     (->> (get-re-list)
@@ -107,22 +115,34 @@
          (filter #(not (nil? (:result %))))
          (first)
          (extract-file-information-re)
+         (dates-to-str)
          )))
 
-(defn get-filename []
+(defn get-fullname []
   (fn [specs value]
-    (:filename specs)))
+    (get-in specs [:global :file-info :fullname])
+    ))
 
 (defn get-capture-date []
   (fn [specs value]
-    (:capture-date specs)))
+    (get-in specs [:global :file-info :capture-str])))
 
 (defn get-valid-from []
   (fn [specs value]
-    (:valid-from specs)))
+    (get-in specs [:global :file-info :valid-from-str])))
 
 (defn get-valid-to []
   (fn [specs value]
-    (:valid-to specs)))
+    (get-in specs [:global :file-info :valid-to-str])))
 
 
+(defn convert-pax-file
+  ([in-filename specs out-filename]
+     (let [file-info (extract-file-information in-filename)
+           specs* (merge specs {:global  (merge (:global specs) {:file-info file-info})})]
+       (parser/convert-file in-filename specs* out-filename nil)))
+  ([in-filename specs out-filename sheet]
+     (let [file-info (extract-file-information in-filename)
+           specs* (merge specs {:global (merge (:global specs) {:file-info file-info})})]
+       (parser/convert-file in-filename specs* out-filename sheet)))
+     )

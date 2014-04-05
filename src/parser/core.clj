@@ -50,6 +50,7 @@
       
       nil
       )))
+
 (defn convert-to-double []
   (fn [specs value]
     (if (not (empty? value))
@@ -139,15 +140,27 @@
   (->> sheet
        (row-seq)
        ))
+
+(defn lazy-file-lines [filename]
+  (letfn [(helper [rdr]
+            (lazy-seq
+             (if-let [line (.readLine rdr)]
+               (cons line (helper rdr))
+               (do (.close rdr) nil))))]
+    (helper (clojure.java.io/reader filename))))
+
 (defmulti read-lines
   (fn [params]
     (get-file-extension params) ;;?? pass params and not (:filename params)
     ))
 (defmethod read-lines :csv [{:keys [filename max]}]
-  (let [lines (clojure.string/split (slurp filename) #"\n")]
+  (let [
+        ;lines (clojure.string/split (slurp filename) #"\n")
+        ]
     (if (nil? max)
-      lines
-      (take max lines))))
+      (lazy-file-lines filename)
+      (take max (lazy-file-lines filename)))))
+
 (defmethod read-lines :xls [{:keys [filename max]}]
   (let [workbook (load-workbook filename)
         sheet (select-sheet 0 workbook)
@@ -335,14 +348,24 @@
     line
     (merge line {:columns (map #(repeat-down-cell %1 %2) (:columns prev-line) (:columns line))})))
 
-(defn repeat-down-lines [specs lines]
-  (let [acc {:prev nil :result []}]
-    (:result (reduce (fn [acc line]
-                       (let [repeated-line (repeat-down-line specs (:prev acc) line)]
-                         {:prev repeated-line
-                          :result  (conj (:result acc) repeated-line)
-                          })
-                       ) acc lines))))
+(defn repeat-down-lines
+  ([specs lines]
+     (repeat-down-lines specs nil lines))
+  ([specs prev-line lines]
+     (lazy-seq
+      (when-let [s (seq lines)]
+        (let [repeat-line (repeat-down-line specs prev-line (first s))]
+          (cons repeat-line
+                (repeat-down-lines specs repeat-line (rest s))))))))
+
+;; (defn repeat-down-lines [specs lines]
+;;   (let [acc {:prev nil :result []}]
+;;     (:result (reduce (fn [acc line]
+;;                        (let [repeated-line (repeat-down-line specs (:prev acc) line)]
+;;                          {:prev repeated-line
+;;                           :result  (conj (:result acc) repeated-line)
+;;                           })
+;;                        ) acc lines))))
 
 ;;
 ;; OUTPUT
@@ -416,7 +439,7 @@
 
 (defn csv-output-to-file [filename csv-lines]
   (with-open [wrtr (writer filename :append true)]
-    (doall (map (fn [line]
+    (dorun (map (fn [line]
                   (.write wrtr line)
                   (.write wrtr "\n"))
                 csv-lines
@@ -424,7 +447,7 @@
   true)
 
 (defn csv-outputs-to-file [filename outputs-csv-lines]
-  (doall (map #(csv-output-to-file filename %1) outputs-csv-lines))
+  (dorun (map #(csv-output-to-file filename %1) outputs-csv-lines))
   true)
 ;;
 ;; ADD DEFAULT VALUES TO ALL THE SPEC

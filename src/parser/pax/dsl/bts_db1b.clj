@@ -30,7 +30,7 @@
             {:index 9 :name "origin-country-iata"}
             {:index 17 :name "destination-airport-iata"}
             {:index 18 :name "destination-country-iata"}
-            {:index 33 :name "pax"}
+            {:index 33 :name "deptot"}
             ]
    
    :columns [{:name "paxtype" :value "airportpair"}
@@ -62,8 +62,9 @@
                      {:global (merge (:global bts-db1b-spec)
                                      {:file-info file-info})})
         specs* (add-defaults-to-specs specs)
-        params {:filename f1 :sheetname sheetname :max 200}
+        params {:filename f1 :sheetname sheetname}
         lines (read-lines params)
+        _ (println "processing data")
         ]
 
     (->> lines
@@ -72,13 +73,14 @@
          (stop-after (:stop specs*))
          (remove-skip-lines)
          (tokenize-lines (re-pattern (get-in specs* [:global :token-separator])))
-         (map #(dissoc %1 :text))
+;         (map #(dissoc %1 :text))
          (lines-to-cells (:tokens specs*))
-         (map #(dissoc %1 :tokens))
+ ;        (map #(dissoc %1 :tokens))
          (merge-lines-with-column-specs (:columns specs*))
          (add-new-column-specs-lines (:columns specs*))
+  ;       (map #(dissoc %1) :cells)
          (transform-lines specs*)
-         (repeat-down-lines specs*)
+   ;      (repeat-down-lines specs*)
          (output-lines specs*)
          (clean-outputs-lines)
          (outputs-to-csv-lines (get-in specs* [:global :output-separator]))

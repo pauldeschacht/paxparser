@@ -47,7 +47,7 @@
    :output (generic-pax-output)
    })
 
-(defn test-aci []
+(defn test-aci [& f1 f2]
   (let [f1 "/home/pdeschacht/dev/paxparser/test/private-data/2014/02/ACI/monthly_international/2013/10/1013MYTDYEiPaxFrt.xlsx"
         f2 "/home/pdeschacht/dev/paxparser/test/private-data/2014/02/ACI/monthly_international/2013/10/test.csv"
         ]

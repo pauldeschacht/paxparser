@@ -29,20 +29,21 @@
 
 (def btre-dom-spec
   {:global {:thousand-separator " "}
-   :input [{:index 1 :name "city-pair" :split (split-into-cells ["origin" "destination"] "-")}
-           {:index 2 :name "2012"}
-           {:index 3 :name "2013"}
+   :input [{:index 1 :name "city-pair" :split (split-into-cells ["origin-city-name" "destination-city-name"] "-")}
+           {:index 3 :name "tottot"}
            ]
-   :columns [{:name "origin" :transform (btre-trim)}
-             {:name "destination" :transform (btre-trim)}
-             {:name "2012" :transform (convert-to-int)}
-             {:name "2013" :transform (convert-to-int)}]
+   :columns [{:name "paxtype" :value "citypair"}
+             {:name "paxsource" :value "BTRE"}
+             {:name "capture-date" :transform (get-capture-date)}
+             {:name "valid-from" :transform (get-valid-from)}
+             {:name "valid-to" :transform (get-valid-to)}
+             {:name "origin-city-name" :transform (btre-trim)}
+             {:name "destination-city-name" :transform (btre-trim)}
+             {:name "metric" :value "pax"}
+             {:name "segment" :value nil}
+             {:name "tottot" :transform (convert-to-int)}]
    
-   :output [{:name "type" :value "citypair"}
-            {:name "origin"}
-            {:name "destination"}
-            {:name "tottot" :source "2013"}]
-
+   :output (generic-pax-output)
    })
 ;;
 ;; BTRE INTERNATIONAL

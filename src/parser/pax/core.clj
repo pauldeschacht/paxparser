@@ -76,7 +76,7 @@
 
 (defn get-re-list []
 (let [p-source "([a-zA-Z0-9-_]*)"
-      p-file "([a-zA-Z0-9-_.]*)$"
+      p-file "([a-zA-Z0-9-_. ]*)$"
       p-folder "([a-zA-Z0-9-_]*)"
       p-capture "(\\d{4})/(\\d{2})"
       p-yyyy "(\\d{4})"

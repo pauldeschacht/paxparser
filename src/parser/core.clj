@@ -73,8 +73,8 @@
                      (lazy-cat values (cycle [nil])))]
       cells)))
 
-(defn merge-into-cell [names join-separator]
-  (fn [cells]
+(defn merge-from [names join-separator]
+  (fn [specs cells]
     (->> names
          (map (fn [name] (filter #(= (:name %) name) cells)))
          (flatten)
@@ -310,13 +310,17 @@
 (defn add-new-column-specs-lines [column-specs lines]
   (map #(add-new-column-specs-line column-specs %1) lines))
 
-(defn merge-cell [cells current-cell]
-  (if-let [merge-fn (:merge current-cell)]
-    (merge current-cell {:value (merge-fn cells)})
-    current-cell))
+(defn merge-cell [specs columns current-column]
+  (if-let [merge-fn (:merge current-column)]
+    (merge current-column {:value (merge-fn specs columns)})
+    current-column))
 
-(defn merge-cells [cells]
-  (map #(merge-cell cells %) cells))
+(defn merge-line [specs line]
+  (merge line
+         {:columns (map #(merge-cell specs (:columns line) %) (:columns line))}))
+
+(defn merge-lines [specs lines]
+  (map #(merge-line specs %) lines))
 
 (defn clean-cell [cell]
   (dissoc cell :index :split :repeat-down :transform))
@@ -475,6 +479,7 @@
        (lines-to-cells (:tokens specs))
        (merge-lines-with-column-specs (:columns specs))
        (add-new-column-specs-lines (:columns specs))
+       (merge-lines specs)
        (transform-lines specs)
        (repeat-down-lines specs)
        (output-lines specs)
@@ -495,6 +500,7 @@
          (lines-to-cells (:tokens specs*))
          (merge-lines-with-column-specs (:columns specs*))
          (add-new-column-specs-lines (:columns specs*))
+         (merge-lines specs*)
          (transform-lines specs*)
          (repeat-down-lines specs*)
          (output-lines specs*)

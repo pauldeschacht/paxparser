@@ -18,23 +18,23 @@
 
 (defn valid-period-month-str
   ([^String year ^String month]
-   (valid-period-month (read-string year) (read-string month)))
+   (valid-period-month (Integer/parseInt year) (Integer/parseInt month)))
   ([^String year ^String m1 ^String m2]
-     (valid-period-month (read-string year) (read-string m1) (read-string m2)))
+     (valid-period-month (Integer/parseInt year) (Integer/parseInt m1) (Integer/parseInt m2)))
   )
 
 
 (defn valid-period-quarter-str [year quarter]
-  (condp = (read-string quarter)
-    1 (valid-period-month (read-string year) 1 3)
-    2 (valid-period-month (read-string year) 4 6)
-    3 (valid-period-month (read-string year) 7 9)
-    4 (valid-period-month (read-string year) 10 12)
+  (condp = (Integer/parseInt quarter)
+    1 (valid-period-month (Integer/parseInt year) 1 3)
+    2 (valid-period-month (Integer/parseInt year) 4 6)
+    3 (valid-period-month (Integer/parseInt year) 7 9)
+    4 (valid-period-month (Integer/parseInt year) 10 12)
     nil
     ))
 
 (defn valid-period-year-str [year]
-  (valid-period-month (read-string year) 1 12))
+  (valid-period-month (Integer/parseInt year) 1 12))
 
 (defn extract-file-information-re [file-info-matcher]
   (let [re (:result file-info-matcher)]

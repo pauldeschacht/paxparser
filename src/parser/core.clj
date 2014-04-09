@@ -1,6 +1,7 @@
 (ns parser.core
   (:use [clojure.java.io])
   (:use [dk.ative.docjure.spreadsheet])
+  (:use [clojure.data.csv :as csv])
   (:import (org.apache.poi.ss.usermodel Row Cell DataFormatter DateUtil)))
 ;;
 ;; debug function
@@ -116,8 +117,8 @@
 ;; multi method row-to-tokens
 ;;
 (defmulti row-to-tokens (fn [data & args] (class data)))
-(defmethod row-to-tokens java.lang.String [data re-separator]
-  (clojure.string/split data re-separator))
+(defmethod row-to-tokens java.lang.String [data separator quote]
+  (first (csv/read-csv data :separator (first separator) :quote (first quote))))
 (defmethod row-to-tokens org.apache.poi.hssf.usermodel.HSSFRow [data & args]
   (xls-row-to-tokens data))
 (defmethod row-to-tokens org.apache.poi.xssf.usermodel.XSSFRow [data]
@@ -161,9 +162,9 @@
       (lazy-file-lines filename)
       (take max (lazy-file-lines filename)))))
 
-(defmethod read-lines :xls [{:keys [filename max]}]
+(defmethod read-lines :xls [{:keys [filename sheetname max]}]
   (let [workbook (load-workbook filename)
-        sheet (select-sheet 0 workbook)
+        sheet (select-sheet sheetname workbook)
         lines (excel-sheet-to-lines sheet)
         lines* (map #(row-to-string %) lines)
         ]
@@ -219,11 +220,11 @@
 ;;
 ;; split line into separate tokens
 ;;
-(defn tokenize-line [re-separator line]
-  (merge line {:split-line (row-to-tokens (:text line) re-separator)}))
+(defn tokenize-line [separator quote line]
+  (merge line {:split-line (row-to-tokens (:text line) separator quote)}))
 
-(defn tokenize-lines [re-separator lines]
-  (map #(tokenize-line re-separator %) lines))
+(defn tokenize-lines [separator quote lines]
+  (map #(tokenize-line separator quote %) lines))
 ;;
 ;; merge each substring with corresponding token specification
 ;;
@@ -258,7 +259,7 @@
 (defn tokenizer-lines [specs lines]
   (let [token-specs (:tokens specs)]
     (->> lines
-         (tokenize-lines (re-pattern (get-in specs [:global :token-separator])))
+         (tokenize-lines (get-in specs [:global :token-separator]) (get-in specs [:global :quote]))
          (lines-to-cells token-specs))))
 ;;
 ;; COLUMNIZER
@@ -458,6 +459,7 @@
 ;;
 (defn add-defaults-to-specs [specs]
   {:global (merge  {:token-separator (str (char 31))
+                    :quote "\""
                     :thousand-separator nil
                     :decimal-separator "."
                     :output-separator "\t"}
@@ -475,7 +477,7 @@
        (wrap-text-lines)
        (skip-lines (:skip specs))
        (remove-skip-lines)
-       (tokenize-lines (re-pattern (get-in specs [:global :token-separator])))
+       (tokenize-lines (get-in specs [:global :token-separator]) (get-in specs [:global :quote]))
        (lines-to-cells (:tokens specs))
        (merge-lines-with-column-specs (:columns specs))
        (add-new-column-specs-lines (:columns specs))
@@ -496,7 +498,7 @@
          (skip-lines (:skip specs*))
          (remove-skip-lines)
          (stop-after (:stop specs*))
-         (tokenize-lines (re-pattern (get-in specs* [:global :token-separator])))
+         (tokenize-lines (get-in specs* [:global :token-separator]) (get-in specs* [:global :quote]))
          (lines-to-cells (:tokens specs*))
          (merge-lines-with-column-specs (:columns specs*))
          (add-new-column-specs-lines (:columns specs*))

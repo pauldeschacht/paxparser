@@ -326,6 +326,26 @@
 (defn transform-lines [specs lines]
   (map #(transform-line specs %1) lines))
 
+(defn skip-transformed-cell? [specs cell]
+  (if-let [skip-fn (:skip-line cell)]
+    (skip-fn specs (:value cell))
+    false))
+
+(defn skip-transformed-line? [specs cells]
+  (some true?
+        (map #(skip-transformed-cell? specs %) cells)))
+
+(defn skip-transformed-line [specs line]
+  (merge line
+         {:skip (skip-transformed-line? specs (:columns line))}))
+
+(defn skip-transformed-lines [specs lines]
+  (->> lines
+       (map #(skip-transformed-line specs %1))
+       (filter #(not (true? (:skip %))))
+       ))
+
+
 ;; :value must be string type
 (defn repeat-down-cell [previous-cell current-cell]
   (if (or (nil? (:repeat-down current-cell))
@@ -393,11 +413,19 @@
 
 (defn single-output-line [output-specs line]
   (merge line {:output 
-               (map #(transform-output-spec-to-output %1 (:columns line)) output-specs)}))
+               (map #(transform-output-spec-to-output %1 (:columns line)) output-specs)
+               }))
+
+(defn skip-single-output-line [output-specs line]
+  (merge line {:skip (skip-transformed-line? output-specs (:output line))}))
 
 (defn single-output-lines [output-specs lines]
   (let [full-output-specs (add-source-to-output-specs output-specs)]
-    (map #(single-output-line full-output-specs %1) lines)))
+    (->> lines
+         (map #(single-output-line full-output-specs %1))
+         (map #(skip-single-output-line full-output-specs %1))
+         (filter #(not (true? (:skip %))))
+         )))
 
 (defn multi-output-lines [multi-output-specs lines]
   (map #(single-output-lines %1 lines) multi-output-specs))
@@ -507,6 +535,7 @@
          (merge-lines specs*)
          (transform-lines specs*)
          (repeat-down-lines specs*)
+         (skip-transformed-lines specs*)
          (output-lines specs*)
          (clean-outputs-lines)
          (outputs-to-csv-lines (get-in specs* [:global :output-separator]))

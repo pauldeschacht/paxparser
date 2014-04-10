@@ -184,7 +184,7 @@
             :decimal-separator ""
             :output-separator ","
             }
-   :skip [(line-contains? ["Gewerblicher" "Passagier" "Verkehr" "Luftverkehr" "Streckenzielflughafen" "von" "Streckenherkunfts-" "flughäfen" "Anzahl" "insgesamt" "Hauptverkehrsflughäfen" "Sonstige"])
+   :skip [(line-contains? ["Gewerblicher" "Passagier" "Verkehr" "Luftverkehr" "Streckenzielflughafen" "von" "Streckenherkunfts-" "flughäfen" "Anzahl" "insgesamt" "Hauptverkehrsflughäfen" "Sonstige" "Europa" "(EU)" "(nicht EU)" "Amerika" "Afrika" "USA" "Asien"])
           (line-empty?)]
 
    :tokens (concat
@@ -227,7 +227,7 @@
             :decimal-separator ""
             :output-separator ","
             }
-   :skip [(line-contains? ["Gewerblicher" "Passagier" "Verkehr" "Luftverkehr" "Streckenzielflughafen" "von" "Streckenherkunfts-" "flughäfen" "Anzahl" "insgesamt" "Hauptverkehrsflughäfen" "Sonstige"])
+   :skip [(line-contains? ["Gewerblicher" "Passagier" "Verkehr" "Luftverkehr" "Streckenzielflughafen" "von" "Streckenherkunfts-" "flughäfen" "Anzahl" "insgesamt" "Hauptverkehrsflughäfen" "Sonstige" "Europa" "(EU)" "(nicht EU)" "Amerika" "Afrika" "USA" "Asien"])
           (line-empty?)]
 
    :tokens (concat

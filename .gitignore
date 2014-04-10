@@ -8,3 +8,4 @@ pom.xml
 /test/paxparser/private-data/*
 .lein-deps-sum
 .nrepl-port
+test/private-data

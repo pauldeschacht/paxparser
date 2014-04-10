@@ -131,7 +131,7 @@
              {:name "valid-from" :transform (get-valid-from)}
              {:name "valid-to" :transform (get-valid-to)}
              {:name "metric" :value "pax"}
-             {:name "segment" :value true}
+             {:name "segment" :value false}
              
              {:name "origin-airport-iata" :transform (bts-clean)}
              {:name "origin-country-iata" :transform (bts-clean)}
@@ -151,8 +151,8 @@
   )
 
 (defn test-bts-db1b []
-  (let [f1 "/home/pdeschacht/dev/paxparser/test/public-data/2014/02/BTS/DB1B/2013/Q3/BTSDB1B.csv"
-        f2 "/home/pdeschacht/dev/paxparser/test/public-data/2014/02/BTS/DB1B/2013/Q3/test.csv"
+  (let [f1 "test/public-data/2014/02/BTS/DB1B/2013/Q3/BTSDB1B.csv"
+        f2 "test/public-data/2014/02/BTS/DB1B/2013/Q3/test.csv"
         sheetname ""
         file-info (extract-file-information f1)
         specs (merge bts-db1b-spec
@@ -177,7 +177,7 @@
          (add-new-column-specs-lines (:columns specs*))
   ;       (map #(dissoc %1) :cells)
          (transform-lines specs*)
-   ;      (repeat-down-lines specs*)
+         (repeat-down-lines specs*)
          (output-lines specs*)
          (clean-outputs-lines)
          (outputs-to-csv-lines (get-in specs* [:global :output-separator]))

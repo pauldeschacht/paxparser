@@ -245,17 +245,6 @@
 (defn lines-to-cells [token-specs lines]
   (map #(line-to-cells token-specs %) lines))
 
-(defn build-token-spec-with-index [index token-specs]
-  (if-let [existing-token-spec (first (filter #(= (:index %) index)  token-specs))]
-    existing-token-spec
-    {:index index :name nil}))
-
-(defn complete-token-specs [token-specs]
-  (let [max-index (apply max (map #(:index %) token-specs))]
-    (reduce #(conj %1 %2)
-            []
-            (map #(build-token-spec-with-index % token-specs) (range 0 (inc max-index))))))
-
 (defn tokenizer-lines [specs lines]
   (let [token-specs (:tokens specs)]
     (->> lines
@@ -454,6 +443,19 @@
 (defn csv-outputs-to-file [filename outputs-csv-lines]
   (dorun (map #(csv-output-to-file filename %1) outputs-csv-lines))
   true)
+;;
+;; create one token for every possible index 
+;;
+(defn build-token-spec-with-index [index token-specs]
+  (if-let [existing-token-spec (first (filter #(= (:index %) index)  token-specs))]
+    existing-token-spec
+    {:index index :name nil}))
+
+(defn complete-token-specs [token-specs]
+  (let [max-index (apply max (map #(:index %) token-specs))]
+    (reduce #(conj %1 %2)
+            []
+            (map #(build-token-spec-with-index % token-specs) (range 0 (inc max-index))))))
 ;;
 ;; ADD DEFAULT VALUES TO ALL THE SPEC
 ;;

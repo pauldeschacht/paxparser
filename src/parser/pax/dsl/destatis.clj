@@ -149,7 +149,7 @@
 (defn destatis-airport-int-list []
   (map #(:name %) destatis-airport-int-indexes))
 
-(defn destatis-country-name []
+(defn destatis-country-name? []
   (fn [specs value]
     (if (= (count value) 3)
       false
@@ -163,7 +163,7 @@
             {:name "capture-date" :transform (get-capture-date)}
             {:name "valid-from" :transform (get-valid-from)}
             {:name "valid-to" :transform (get-valid-to)}
-            {:name "origin-airport-iata" :transform (destatis-trim) :skip-line (destatis-country-name)}
+            {:name "origin-airport-iata" :transform (destatis-trim) :skip-line (destatis-country-name?)}
             {:name "metric" :value "pax"}
             {:name "segment" :value false}]
 

@@ -35,7 +35,7 @@
     (empty? (clojure.string/trim line))))
 
 (defn cell-contains? [words & body]
-  (fn [value]
+  (fn [specs value]
     (some #(substring? % value) words)))
 
 (defn convert-to-int []
@@ -65,6 +65,12 @@
       
       nil
       )))
+
+(defn copy-into-cells [names]
+  (fn [token]
+    (let [cells (map #(hash-map :name %1 :value token)
+                     names)]
+      cells)))
 
 (defn split-into-cells [names separator]
   (fn [token]
@@ -315,6 +321,7 @@
 (defn clean-cell [cell]
   (dissoc cell :index :split :repeat-down :transform))
 
+;; transform only the value
 (defn transform-cell [specs cell]
   (if-let [transform-fn (:transform cell)]
     (merge cell {:value (transform-fn specs (:value cell))})
@@ -325,6 +332,27 @@
 
 (defn transform-lines [specs lines]
   (map #(transform-line specs %1) lines))
+
+;; pass all columns to user function
+(defn find-cell-by-name [name cells]
+  (first (filter #(= name (:name %1)) cells)))
+
+(defn get-named-cell-value [name cells]
+  (if-let [cell (find-cell-by-name name cells)]
+    (:value cell)
+    nil)
+  ) 
+
+(defn transform-full-line-cell [specs cells cell]
+  (if-let [transform-fn (:transform-line cell)]
+    (merge cell {:value (transform-fn specs cells (:value cell))})
+    cell))
+
+(defn transform-full-line [specs line]
+  (merge line {:columns (map #(transform-full-line-cell specs (:columns line) %) (:columns line))}))
+
+(defn transform-full-lines [specs lines]
+  (map #(transform-full-line specs %1) lines))
 
 (defn skip-transformed-cell? [specs cell]
   (if-let [skip-fn (:skip-line cell)]
@@ -346,7 +374,7 @@
        ))
 
 
-;; :value must be string type
+;; :value must be string type (:value must support nil? and empty? function)
 (defn repeat-down-cell [previous-cell current-cell]
   (if (or (nil? (:repeat-down current-cell))
           (false? (:repeat-down current-cell))
@@ -535,6 +563,7 @@
          (merge-lines specs*)
          (transform-lines specs*)
          (repeat-down-lines specs*)
+         (transform-full-lines specs*)
          (skip-transformed-lines specs*)
          (output-lines specs*)
          (clean-outputs-lines)

@@ -154,7 +154,5 @@
      (let [file-info (extract-file-information in-filename)
            specs* (merge specs {:global (merge (:global specs) {:file-info file-info})})]
        (try
-         (do
-           (println specs*)
-           (parser/convert-file in-filename specs* out-filename sheet))
+         (parser/convert-file in-filename specs* out-filename sheet)
          (catch Exception e (str "Exception while processing input " in-filename "\n" (.getMessage e)))))))

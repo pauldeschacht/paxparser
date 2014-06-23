@@ -101,6 +101,10 @@
   (merge {:type (:type re)
           :result (re-find (:re re) s)}))
 
+(defn date-to-str [date]
+  (f/unparse (f/formatters :date) date)
+  )
+
 (defn dates-to-str [file-info]
   (merge file-info
          {:capture-str (f/unparse (f/formatters :date) (:capture file-info))
@@ -119,20 +123,20 @@
          )))
 
 (defn get-fullname []
-  (fn [specs value]
+  (fn [specs value & line]
     (get-in specs [:global :file-info :fullname])
     ))
 
 (defn get-capture-date []
-  (fn [specs value]
+  (fn [specs value & line]
     (get-in specs [:global :file-info :capture-str])))
 
 (defn get-valid-from []
-  (fn [specs value]
+  (fn [specs value & line]
     (get-in specs [:global :file-info :valid-from-str])))
 
 (defn get-valid-to []
-  (fn [specs value]
+  (fn [specs value & line]
     (get-in specs [:global :file-info :valid-to-str])))
 
 
@@ -140,9 +144,17 @@
   ([in-filename specs out-filename]
      (let [file-info (extract-file-information in-filename)
            specs* (merge specs {:global  (merge (:global specs) {:file-info file-info})})]
-       (parser/convert-file in-filename specs* out-filename nil)))
+       (try
+         (parser/convert-file in-filename specs* out-filename nil)
+         (catch Exception e (str "Exception while processing input " in-filename "\n" (.getMessage e))))
+       
+
+       ))
   ([in-filename specs out-filename sheet]
      (let [file-info (extract-file-information in-filename)
            specs* (merge specs {:global (merge (:global specs) {:file-info file-info})})]
-       (parser/convert-file in-filename specs* out-filename sheet)))
-     )
+       (try
+         (do
+           (println specs*)
+           (parser/convert-file in-filename specs* out-filename sheet))
+         (catch Exception e (str "Exception while processing input " in-filename "\n" (.getMessage e)))))))

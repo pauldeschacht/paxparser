@@ -39,28 +39,29 @@
     (some #(substring? % value) words)))
 
 (defn convert-to-int []
-  (fn [specs value]
+  (fn [specs value & line]
     (if (not (empty? value))
       (try
-        (let [thousand-separator (get-in specs [:global :thousand-separator])]
+        (let [thousand-separator (get-in specs [:global :thousand-separator])
+              ]
           (if (empty? thousand-separator)
             (int (Double/parseDouble value))
             (int (Double/parseDouble (clojure.string/replace value thousand-separator "")))))
-        (catch Exception e (println (.getMessage e)))
+        (catch Exception e (println (str "Error convert to int: " value  (.getMessage e))))
         )
       
       nil
       )))
 
 (defn convert-to-double []
-  (fn [specs value]
+  (fn [specs value & line]
     (if (not (empty? value))
       (try
         (let [thousand-separator (get-in specs [:global :thousand-separator])]
           (if (empty? thousand-separator)
             (Double/parseDouble value)
             (Double/parseDouble (clojure.string/replace value thousand-separator ""))))
-        (catch Exception e (println (.getMessage e)))
+        (catch Exception e (println (str "Error convert to double: " value (.getMessage e))))
         )
       
       nil
@@ -257,6 +258,75 @@
          (tokenize-lines (get-in specs [:global :token-separator]) (get-in specs [:global :quote]))
          (lines-to-cells token-specs))))
 ;;
+;; TRANSPOSE
+;;
+(defn list-contains-element? [list element]
+  (let [s (seq list)]
+    (if s
+      (if (= (first s) element)
+        true
+        (recur (rest s) element))
+      false)))
+
+(defn transpose-get-naked-line [transpose-info line]
+  (filter #(not (list-contains-element? (:tokens transpose-info) (:name %1))) line))
+
+(defn transpose-extract-cell-with-name [line name]
+  (first (filter #(= (:name %) name) line)))
+
+;;
+;; transpose-single-cell "month" "totdom" cells "jan"
+;; --> [ {:name "month" :value ... } {:name "totdom" :value ...} ]
+;;
+(defn transpose-single-cell [header-column value-column cells name]
+  (if-let [cell (transpose-extract-cell-with-name cells name)]
+    (vector (hash-map :name header-column :value (:name cell))
+            (hash-map :name value-column  :value (:value cell)))
+    nil
+    ))
+
+(defn transpose-cells [transpose-info cells]
+  (let [names (:tokens transpose-info)
+        naked-line (transpose-get-naked-line transpose-info cells)
+        ;; _ (println (apply str "naked line " naked-line))
+        ;; temp1 (map #(transpose-single-cell (:header-column transpose-info)
+        ;;                                     (:value-column transpose-info)
+        ;;                                     (:cells line)
+        ;;                                     %1)
+        ;;             names)
+        ;; _ (println (doall (map #(println (apply str "Temp1: " %1)) temp1)))
+        
+        ;; temp2 (filter #(not (empty? %1)) temp1)
+        ;; _ (println (doall (map #(println (apply str "Temp2: " %1)) temp2)))
+        
+        ;; transposed-lines (map #(concat naked-line %1) temp2)
+        ;; _ (println (doall (map #(println (apply str "Transposed: " %1)) transposed-lines)))
+        ]
+    (->> names
+         (map #(transpose-single-cell (:header-column transpose-info)
+                                      (:value-column transpose-info)
+                                      cells
+                                      %1))
+         (filter #(not (empty? %1)))
+         (map #(concat naked-line %1))
+     )
+    
+    ))
+
+(defn transpose-line [transpose-info line]
+  (let [transposed-cells (transpose-cells transpose-info (:cells line))
+        ]
+    (map #(merge line {:cells %1}) transposed-cells)
+    ))
+
+(defn transpose-lines [transpose-info lines]
+  (if (nil? transpose-info)
+    lines
+    (->> (map #(transpose-line transpose-info %1) lines)
+         (flatten)
+      )))
+
+;;
 ;; COLUMNIZER
 ;;
 (defn find-spec-by-name [specs name]
@@ -322,13 +392,13 @@
   (dissoc cell :index :split :repeat-down :transform))
 
 ;; transform only the value
-(defn transform-cell [specs cell]
+(defn transform-cell [specs line cell]
   (if-let [transform-fn (:transform cell)]
-    (merge cell {:value (transform-fn specs (:value cell))})
+    (merge cell {:value (transform-fn specs (:value cell) line)})
     cell))
 
 (defn transform-line [specs line]
-  (merge line {:columns (map #(transform-cell specs %) (:columns line))}))
+  (merge line {:columns (map #(transform-cell specs line %) (:columns line))}))
 
 (defn transform-lines [specs lines]
   (map #(transform-line specs %1) lines))
@@ -525,10 +595,10 @@
    :skip (:skip specs)
    :stop (:stop specs)
    :tokens (complete-token-specs (:tokens specs))
+   :transpose (:transpose specs)
    :columns (:columns specs)
    :output (:output specs)
-   :outputs (:outputs specs)
-   })
+   :outputs (:outputs specs)})
 
 (defn process-lines [specs lines]
   (->> lines
@@ -549,7 +619,7 @@
 
 (defn convert-file [input-filename specs output-filename sheetname]
   (let [params {:filename input-filename :sheetname sheetname}
-        specs* (add-defaults-to-specs specs)
+       specs* (add-defaults-to-specs specs)
         lines (read-lines params)]
     (->> lines
          (wrap-text-lines)
@@ -558,6 +628,7 @@
          (stop-after (:stop specs*))
          (tokenize-lines (get-in specs* [:global :token-separator]) (get-in specs* [:global :quote]))
          (lines-to-cells (:tokens specs*))
+         (transpose-lines (:transpose specs*))
          (merge-lines-with-column-specs (:columns specs*))
          (add-new-column-specs-lines (:columns specs*))
          (merge-lines specs*)

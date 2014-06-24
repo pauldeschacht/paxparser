@@ -1,6 +1,6 @@
 (ns parser.core-test
-  (:use clojure.test
-        parser.core))
+  (:use clojure.test)
+  (:use parser.core))
 
 (defn get-test-lines []
   (let [
@@ -13,13 +13,16 @@
     [line1 line2 line3 line4 line5]
     ))
 
+
 (defn test-clean-country []
-  (fn [specs value]
+  (fn [specs value & line]
     (clojure.string/replace value "-" "")))
 
 (defn get-test-specs []
   {:skip [(line-empty?)]
-   :global {:token-separator " "}
+   :global {:token-separator " "
+            :quote "\""
+            :output-separator "\t"}
    :tokens [ {:index 0 :name "identifier"}
              {:index 1 :name "country"}
              {:index 2 :name "region"}]
@@ -78,7 +81,8 @@
                       (wrap-text-lines)
                       (skip-lines (:skip specs))
                       (remove-skip-lines)
-                      (tokenize-lines (re-pattern (get-in specs [:global :token-separator])))
+                      (tokenize-lines (get-in specs [:global :token-separator])
+                                      (get-in specs [:global :quote]))
                       )
           ]
       (is (= {:text (nth lines 0)
@@ -101,7 +105,8 @@
                       (wrap-text-lines)
                       (skip-lines (:skip specs))
                       (remove-skip-lines)
-                      (tokenize-lines (re-pattern (get-in specs [:global :token-separator])))
+                      (tokenize-lines (get-in specs [:global :token-separator])
+                                      (get-in specs [:global :quote]))
                       (lines-to-cells (:tokens specs))
                       )]
       (is (= {:text (nth lines 0)
@@ -137,8 +142,10 @@
                       (wrap-text-lines)
                       (skip-lines (:skip specs))
                       (remove-skip-lines)
-                      (tokenize-lines (re-pattern (get-in specs [:global :token-separator])))
+                      (tokenize-lines (get-in specs [:global :token-separator])
+                                      (get-in specs [:global :quote]))
                       (lines-to-cells (:tokens specs))
+                      (transpose-lines (:transpose specs))
                       (merge-lines-with-column-specs (:columns specs))
                       (add-new-column-specs-lines (:columns specs))
                       )
@@ -158,8 +165,10 @@
                       (wrap-text-lines)
                       (skip-lines (:skip specs))
                       (remove-skip-lines)
-                      (tokenize-lines (re-pattern (get-in specs [:global :token-separator])))
+                      (tokenize-lines (get-in specs [:global :token-separator])
+                                      (get-in specs [:global :quote]))
                       (lines-to-cells (:tokens specs))
+                      (transpose-lines (:transpose specs))
                       (merge-lines-with-column-specs (:columns specs))
                       (add-new-column-specs-lines (:columns specs))
                       (transform-lines specs)
@@ -182,8 +191,10 @@
          (wrap-text-lines)
          (skip-lines (:skip specs))
          (remove-skip-lines)
-         (tokenize-lines (re-pattern (get-in specs [:global :token-separator])))
+         (tokenize-lines (get-in specs [:global :token-separator])
+                         (get-in specs [:global :quote]))
          (lines-to-cells (:tokens specs))
+         (transpose-lines (:transpose specs))
          (merge-lines-with-column-specs (:columns specs))
          (add-new-column-specs-lines (:columns specs))
          (transform-lines specs)
@@ -226,14 +237,22 @@
       (is (= "5" (:value new-cell))))))
 
 
+(defn get-repeat-lines []
+  (let [
+        line1 {:columns [{:value "1.1"} {:value "1.2"} {:value "1.3" :repeat-down true}]}
+        line2 {:columns [{:value "2.1"} {:value "2.2"} {:value "" :repeat-down true}]}
+        line3 {:columns [{:value "3.1"} {:value "3.2"} {:value "3.3" :repeat-down true}]}
+        line4 {:columns [{:value "4.1"} {:value "4.2"} {:value "" :repeat-down false}]}
+        lines [line1 line2 line3 line4]
+
+        ]
+    lines
+    )
+  )
 
 (deftest repeat-lines
   (let [specs {}
-        line1 {:cells [{:value "1.1"} {:value "1.2"} {:value "1.3" :repeat-down true}]}
-        line2 {:cells [{:value "2.1"} {:value "2.2"} {:value "" :repeat-down true}]}
-        line3 {:cells [{:value "3.1"} {:value "3.2"} {:value "3.3" :repeat-down true}]}
-        line4 {:cells [{:value "4.1"} {:value "4.2"} {:value "" :repeat-down false}]}
-        lines [line1, line2 line3 line4]
+        lines (get-repeat-lines)
         lines* (repeat-down-lines specs lines)
         ]
     (is (= "1.1" (:value (nth (:columns (nth lines* 0))  0 ))))
@@ -249,4 +268,92 @@
     (is (= "4.2" (:value (nth (:columns (nth lines* 3))  1 ))))
     (is (= ""    (:value (nth (:columns (nth lines* 3))  2 ))))
     )
+  )
+
+
+(defn transpose-get-lines []
+  (let [
+        line1 "Id Country Jan Feb Mar Apr"
+        line2 "50 Belgium 11 12 13"
+        line3 "60 France 21 22 23"
+        line4 "70 Germany 31 32 33"
+        lines [line1 line2 line3 line4]
+        ]
+    lines
+    ))
+
+(defn transpose-get-specs []
+  {:skip [(line-empty?)
+          (line-contains? ["Id"])]
+   :global {:token-separator " "
+            :quote "\""
+            }
+   :tokens [ {:index 0 :name "identifier"}
+             {:index 1 :name "country"}
+             {:index 2 :name "jan"}
+             {:index 3 :name "feb"}
+             {:index 4 :name "mar"}
+             {:index 5 :name "apr"}
+             {:index 6 :name "may"}
+             ]
+   :transpose {:header-column "month"
+               :value-column "pax"
+               :tokens ["jan" "feb" "mar" "apr" "may"]
+               }
+   
+   :columns [{:name "country"}
+             {:name "month"}
+             {:name "pax"}]
+   :output [{:name "filler" :value ""}  ;; add new column with fixed value
+            {:name "country"}  ;; ignore region
+            {:name "month"}
+            {:name "pax"}]
+   }
+  )
+
+(defn get-value-for-column [name line]
+  (:value (first (filter #(= name (:name %1)) (:columns line)))))
+
+(deftest transpose-test
+  ( testing "Transpose columns"
+    (let [specs (transpose-get-specs)
+          lines (transpose-get-lines)
+          result (->> lines
+                      (wrap-text-lines)
+                      (skip-lines (:skip specs))
+                      (remove-skip-lines)
+                      (tokenize-lines (get-in specs [:global :token-separator])
+                                      (get-in specs [:global :quote]))
+                      (lines-to-cells (:tokens specs))
+                      (transpose-lines (:transpose specs))
+                      (merge-lines-with-column-specs (:columns specs))
+                      (add-new-column-specs-lines (:columns specs))
+                      (transform-lines specs))
+          ]
+      (is (= 9 (count result)))
+      (is (= "Belgium" (get-value-for-column "country" (nth result 0))))
+      (is (= "11" (get-value-for-column "pax" (nth result 0))))
+      (is (= "jan" (get-value-for-column "month" (nth result 0))))
+
+      (is (= "Belgium" (get-value-for-column "country" (nth result 1))))
+      (is (= "feb" (get-value-for-column "month" (nth result 1))))
+      (is (= "12" (get-value-for-column "pax" (nth result 1))))
+      
+      (is (= "Belgium" (get-value-for-column "country" (nth result 2))))
+      (is (= "13" (get-value-for-column "pax" (nth result 2))))
+      (is (= "mar" (get-value-for-column "month" (nth result 2))))
+
+      (is (= "France" (get-value-for-column "country" (nth result 3))))
+      (is (= "21" (get-value-for-column "pax" (nth result 3))))
+      (is (= "jan" (get-value-for-column "month" (nth result 3))))
+
+      (is (= "France" (get-value-for-column "country" (nth result 4))))
+      (is (= "feb" (get-value-for-column "month" (nth result 4))))
+      (is (= "22" (get-value-for-column "pax" (nth result 4))))
+      
+      (is (= "France" (get-value-for-column "country" (nth result 5))))
+      (is (= "23" (get-value-for-column "pax" (nth result 5))))
+      (is (= "mar" (get-value-for-column "month" (nth result 5))))
+
+      ))
   )

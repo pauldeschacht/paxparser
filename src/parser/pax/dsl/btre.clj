@@ -26,12 +26,20 @@
       (clojure.string/trim value))))
 
 (def btre-dom-spec
-  {:global {:thousand-separator " "}
-   :input [{:index 1 :name "city-pair" :split (split-into-cells ["origin-city-name" "destination-city-name"] "-")}
+  {:global {:thousand-separator " "
+            :output-separator ","
+            }
+   :skip [(line-empty?)
+          (line-contains? ["Passenger" "City-Pair"])]
+
+   :stop [(line-contains? ["Total domestic network"])]
+   
+   :tokens [{:index 1 :name "city-pair" :split (split-into-cells ["origin-city-name" "destination-city-name"] "-")}
            {:index 3 :name "tottot"}
            ]
    :columns [{:name "paxtype" :value "citypair"}
              {:name "paxsource" :value "BTRE"}
+             {:name "fullname" :transform (get-fullname)}
              {:name "capture-date" :transform (get-capture-date)}
              {:name "valid-from" :transform (get-valid-from)}
              {:name "valid-to" :transform (get-valid-to)}
@@ -114,36 +122,32 @@
              {:name "depint slf" :transform (btre-clean-value convert-to-double)}
              ]
    
-   :outputs [ (merge-pax-output (generic-pax-output)
-                                [{:name "metric" :value "pax"}
-                                 {:name "origin-country-name" :source "country"}
-                                 {:name "destination-country-name" :value "Australia"}
-                                 {:name "arrint" :source "arrint pax"}
-                                 ]
-                                )
-              (merge-pax-output (generic-pax-output)
-                                [{:name "metric" :value "pax"}
-                                 {:name "origin-country-name" :value "Australia"}
-                                 {:name "destination-country-name" :source "country"}
-                                 {:name "depint" :source "depint pax"}
-                                 ]
-                                )
-              (merge-pax-output (generic-pax-output)
-                                [{:name "metric" :value "slf"}
-                                 {:name "origin-country-name" :source "country"}
-                                 {:name "destination-country-name" :value "Australia"}
-                                 {:name "arrint" :source "arrint slf"}
-                                 ]
-                                )
-              (merge-pax-output (generic-pax-output)
-                                [{:name "metric" :value "slf"}
-                                 {:name "origin-country-name" :value "Australia"}
-                                 {:name "destination-country-name" :source "country"}
-                                 {:name "depint" :source "depint slf"}
+   :outputs [(merge-pax-output (generic-pax-output)
+                               [{:name "metric" :value "pax"}
+                                {:name "origin-country-name" :value "Australia"}
+                                {:name "destination-country-name" :source "country"}
+                                {:name "depint" :source "depint pax"}
+                                {:name "arrint" :source "arrint pax"}
+                                ]
+                               )
+             (merge-pax-output (generic-pax-output)
+                               [{:name "metric" :value "slf"}
+                                {:name "origin-country-name" :value "Australia"}
+                                {:name "destination-country-name" :source "country"}
+                                {:name "depint" :source "depint slf"}
+                                {:name "arrint" :source "arrint slf"}
                                  ]
                                 )
               ]
    })
+
+(defn test-btre-dom []
+  (let [f1 "/home/pdeschacht/dev/paxparser/test/public-data/2014/02/BTRE_Australia/2013/10/BTRE_Domestic_airlines_Nov_2013.xls"
+        f2 "/home/pdeschacht/dev/paxparser/test/public-data/2014/02/BTRE_Australia/2013/10/BTRE_Domestic_airlines_Nov_2013.csv"
+        sheetname "Passengers"
+        ]
+    (convert-pax-file f1 btre-dom-spec f2 sheetname))
+  )
 
 (defn test-btre-int-pax []
   (let [f1 "/home/pdeschacht/dev/paxparser/test/public-data/2014/02/BTRE_Australia/2013/10/BTRE_International_airline_activity_1310_Tables.xls"

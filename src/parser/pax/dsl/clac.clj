@@ -32,7 +32,9 @@
       )))
 
 (def clac-spec
-  {:global {:output-separator ","}
+  {:global {:output-separator "\t"} ;; airline contains ,
+   ;;TODO use csv/writer and use quotes ?
+   ;;TODO or use a safe separator
 
    :skip [(line-contains? ["CIUDAD-DESTINO"])]
 
@@ -53,6 +55,8 @@
              {:name "arrtot" :transform (convert-to-int)}
              {:name "valid-from" :transform (clac-valid-from)}
              {:name "valid-to" :merge (merge-from ["valid-from"] "") :transform (clac-valid-to)}
+             {:name "metric" :value "pax"}
+             {:name "segment" :value false}
              ]
 
    :output (generic-pax-output)
@@ -63,4 +67,5 @@
   (let [f1 "/home/pdeschacht/dev/paxparser/test/public-data/2014/02/CLAC/2013/04/CLAC_2013.xls"
         f2 "/home/pdeschacht/dev/paxparser/test/public-data/2014/02/CLAC/2013/04/CLAC_2013.csv"
         sheet "Registro Datos"]
-    (convert-pax-file f1 clac-spec f2 sheet)))
+    (convert-pax-file f1 clac-spec f2 sheet))
+)

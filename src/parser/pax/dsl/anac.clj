@@ -28,7 +28,7 @@
             :output-separator ","
             }
 
-   :skip [(line-contains? ["Dependência" "Superintendência" "INFRAERO"])]
+   :skip [(line-contains? ["Dependência" "Superintendência" "INFRAERO" "Domest" "Total"])]
    
    :tokens [{:index 0 :name "icao_name" :split (split-into-cells ["origin-airport-icao" "origin-airport-name"] "-")}
             {:index 4 :name "totdom"}

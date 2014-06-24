@@ -24,14 +24,14 @@
     ))
 
 (defn btre-to-int []
-  (fn [specs value]
+  (fn [specs value & line]
     (let [v (safe-to-int value)]
       (if (= v 0)
         nil
         v))))
 
 (defn btre-valid-from []
-  (fn [specs value]
+  (fn [specs value & line]
     (let [tokens (clojure.string/split value (re-pattern "-"))
           year (safe-to-int (first tokens))
           month (safe-to-int (second tokens))
@@ -39,7 +39,7 @@
       (t/first-day-of-the-month year month))))
 
 (defn btre-valid-to []
-  (fn [specs value]
+  (fn [specs value & line]
     (let [tokens (clojure.string/split value (re-pattern "-"))
           year (read-string (first tokens))
           month (read-string (second tokens))]

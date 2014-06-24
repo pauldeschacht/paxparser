@@ -5,7 +5,7 @@
 
 (defn btre-clean-value [fun]
   (let [function (fun)]
-    (fn [specs value]
+    (fn [specs value & line]
       (if (empty? value)
         nil
         (let [value* (clojure.string/trim value)]
@@ -14,15 +14,13 @@
                (= value* "-")
                )
             nil
-            (function specs value*)))))
-    )
-  )
+            (function specs value* line)))))))
 
 ;;
 ;; BTRE DOMESTIC
 ;;
 (defn btre-trim []
-  (fn [specs value]
+  (fn [specs value & line]
     (if (empty? value)
       nil
       (clojure.string/trim value))))
@@ -55,8 +53,8 @@
             }
    :skip [(line-contains? ["TABLE" "Passengers" "Freight" "Foreign" "Inbound" "Outbound" "Total" "ALL SERVICES"])
           (line-empty?)]
-   
 
+   :stop [(line-contains? ["explanatory notes"])]
    
    :tokens [{:index 0 :name "origin-airport-name" }
             {:index 1 :name "destination-airport-name" }
@@ -89,7 +87,7 @@
             }
    :skip [(line-contains? ["TABLE" "Scheduled" "Inbound" "Outbound" "TOTAL" "Please" "Carried" "ALL SERVICES"])
           (line-empty?)]
-   :stop [(line-contains? ["Please"])]
+   :stop [(line-contains? ["Please" "In addition to the above"])]
    
    :tokens [{:index 0 :name "airline-name" }
             {:index 1 :name "country" }
@@ -101,6 +99,7 @@
    
    :columns [{:name "paxtype" :value "countrypairairline"}
              {:name "paxsource" :value "BTRE"}
+             {:name "fullname" :transform (get-fullname)}
              {:name "capture-date" :transform (get-capture-date)}
              {:name "valid-from" :transform (get-valid-from)}
              {:name "valid-to" :transform (get-valid-to)}
@@ -150,63 +149,13 @@
   (let [f1 "/home/pdeschacht/dev/paxparser/test/public-data/2014/02/BTRE_Australia/2013/10/BTRE_International_airline_activity_1310_Tables.xls"
         f2 "/home/pdeschacht/dev/paxparser/test/public-data/2014/02/BTRE_Australia/2013/10/test_int_pax.csv"
         sheetname "Table_5"
-        file-info (extract-file-information f1)
-        specs (merge btre-int-pax-spec
-                     {:global (merge (:global btre-int-pax-spec)
-                                     {:file-info file-info})})
-        specs* (add-defaults-to-specs specs)
-        params {:filename f1 :sheetname sheetname}
-        lines (read-lines params)
         ]
-
-    (->> lines
-         (wrap-text-lines)
-         (skip-lines (:skip specs*))
-         (stop-after (:stop specs*))
-         (remove-skip-lines)
-         (tokenize-lines (re-pattern (get-in specs* [:global :token-separator])))
-         (lines-to-cells (:tokens specs*))
-         (merge-lines-with-column-specs (:columns specs*))
-         (add-new-column-specs-lines (:columns specs*))
-         (transform-lines specs*)
-         (repeat-down-lines specs*)
-         (output-lines specs*)
-         (clean-outputs-lines)
-         (outputs-to-csv-lines (get-in specs* [:global :output-separator]))
-         (csv-outputs-to-file f2)
-         )
-    )
-  )
+    (convert-pax-file f1 btre-int-pax-spec f2 sheetname)))
 
 
 (defn test-btre-int-countrypairairline []
   (let [f1 "/home/pdeschacht/dev/paxparser/test/public-data/2014/02/BTRE_Australia/2013/10/BTRE_International_airline_activity_1310_Tables.xls"
         f2 "/home/pdeschacht/dev/paxparser/test/public-data/2014/02/BTRE_Australia/2013/10/test_countrypairairline.csv"
         sheetname "Table_3"
-        file-info (extract-file-information f1)
-        specs (merge btre-int-countrypairairline-spec
-                     {:global (merge (:global btre-int-countrypairairline-spec)
-                                     {:file-info file-info})})
-        specs* (add-defaults-to-specs specs)
-        params {:filename f1 :sheetname sheetname :max 200}
-        lines (read-lines params)
         ]
-
-    (->> lines
-         (wrap-text-lines)
-         (skip-lines (:skip specs*))
-         (stop-after (:stop specs*))
-         (remove-skip-lines)
-         (tokenize-lines (re-pattern (get-in specs* [:global :token-separator])))
-         (lines-to-cells (:tokens specs*))
-         (merge-lines-with-column-specs (:columns specs*))
-         (add-new-column-specs-lines (:columns specs*))
-         (transform-lines specs*)
-         (repeat-down-lines specs*)
-         (output-lines specs*)
-         (clean-outputs-lines)
-         (outputs-to-csv-lines (get-in specs* [:global :output-separator]))
-         (csv-outputs-to-file f2)
-         )
-    )
-  )
+    (convert-pax-file f1 btre-int-countrypairairline-spec f2 sheetname)))

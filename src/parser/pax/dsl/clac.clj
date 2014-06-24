@@ -16,7 +16,7 @@
       )))
 
 (defn clac-valid-from []
-  (fn [specs value]
+  (fn [specs value & line]
     (if-let [valid (get-in specs [:global :file-info :valid])]
       (if-let [month (clac-safe-to-int value)]
         (f/unparse (f/formatters :date)
@@ -24,7 +24,7 @@
       )))
   
 (defn clac-valid-to []
-  (fn [specs value]
+  (fn [specs value & line]
     (if-let [valid (get-in specs [:global :file-info :valid])]
       (if-let [month (clac-safe-to-int value)]
         ( f/unparse (f/formatters :date)

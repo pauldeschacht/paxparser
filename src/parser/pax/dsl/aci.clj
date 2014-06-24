@@ -6,18 +6,17 @@
 ;; ACI INTERNATIONAL & WORLDWIDE
 ;;
 (defn aci-pax-to-int []
-  (fn [specs value]
+  (fn [specs value & line]
     (if (= value "*****")
       nil
       (read-string (clojure.string/replace value " " ""))
       )))
 
 (defn aci-trim []
-  (fn [specs value]
+  (fn [specs value & line]
     (if (nil? value)
       value
       (clojure.string/trim value))))
-
 
 (def aci-spec
   {:global {:thousand-separator " "
@@ -47,8 +46,8 @@
    :output (generic-pax-output)
    })
 
-(defn test-aci [& f1 f2]
+(defn test-aci []
   (let [f1 "/home/pdeschacht/dev/paxparser/test/private-data/2014/02/ACI/monthly_international/2013/10/1013MYTDYEiPaxFrt.xlsx"
-        f2 "/home/pdeschacht/dev/paxparser/test/private-data/2014/02/ACI/monthly_international/2013/10/test.csv"
+        f2 "/home/pdeschacht/dev/paxparser/test/private-data/2014/02/ACI/monthly_international/2013/10/1013MYTDYEiPaxFrt.csv"
         ]
     (convert-pax-file f1 aci-spec f2 "Sheet1")))

@@ -7,25 +7,23 @@
 ;;
 
 (defn destatis-trim []
-  (fn [specs value]
+  (fn [specs value & line]
     (if (empty? value)
       nil
       (clojure.string/trim value))))
 
 (defn destatis-convert-to-int []
-  (fn [ctxt value]
-    (do
-      (if (not (empty? value))
-        (if (= (clojure.string/trim value) "-")
-          nil
-          (if-let [thousand-separator (:thousand-separator ctxt)]
-            (int (Double/parseDouble (clojure.string/replace value thousand-separator "")))
-            (int (Double/parseDouble value))))
-        nil
-        ))))
+  (fn [specs value & line]
+    (if (or (empty? value)
+            (= (clojure.string/trim value) "-"))
+      nil
+      (if-let [thousand-separator (get-in specs [:global :thousand-separator])]
+        (int (Double/parseDouble (clojure.string/replace value thousand-separator "")))
+        (int (Double/parseDouble value)))
+      )))
 
 (defn destatis-skip-empty-pax []
-  (fn [specs value]
+  (fn [specs value & line]
     (if (nil? value)
       true
       false)))
@@ -77,7 +75,7 @@
             {:name "valid-from" :transform (get-valid-from)}
             {:name "valid-to" :transform (get-valid-to)}
             {:name "origin-airport-name" :transform (destatis-trim)}
-            {:name "metric" :value "pax"}
+            {:name "metric" :value "pax"} 
             {:name "segment" :value false}]
 
           (map #(hash-map :name %1 :transform (destatis-convert-to-int))
@@ -200,13 +198,11 @@
 ;;
 (defn destatis-skip-iata-code []
   (fn [specs value]
-    (do
-      (println value)
-      (if (empty? value)
+    (if (empty? value)
+      true
+      (if (= (count (clojure.string/trim value)) 3)
         true
-        (if (= (count (clojure.string/trim value)) 3)
-          true
-          false)))))
+        false))))
 
 (defn destatis-int-countryairport-columns []
   (concat [ {:name "paxtype" :value "airportpair"}

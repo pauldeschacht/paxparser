@@ -7,7 +7,7 @@
 ;;
 ;; MX SASE XLSX 
 ;;
-(def- mx-month-lst ["jan" "feb" "mar" "apr" "may" "jun" "jul" "aug" "sep" "oct" "nov" "d-ec"])
+(def mx-month-lst ["jan" "feb" "mar" "apr" "may" "jun" "jul" "aug" "sep" "oct" "nov" "d-ec"])
 
 ;;
 ;; transform name of the month to the index (example "may" --> 5)
@@ -60,7 +60,7 @@
 ;;
 ;; parse the excel with city pair data
 ;;
-(defn mx-city-pair-spec [year motive]
+(defn mx-citypair-spec [year motive]
   {:global {:thousand-separator ""
             :decimal-separator ""
             :output-separator ","}
@@ -159,27 +159,27 @@
              {:name "segment" :value nil}
 
              {:name "origin-airport-name"}
-             {:name motive :transform (convert-to-int) :skip-line (skip-if-zero)}
+             {:name motive :transform (convert-to-int) :skip-line (mx-skip-if-zero)}
              ]
    
    :output (generic-pax-output)
    }
   )
 
-(defn mx-test-city-pair []
-  (let [in "/home/pdeschacht/dev/paxparser/test/public-data/2014/04/MX/2014/04/SASE_ABRIL_2014.xlsx"
-        out "/home/pdeschacht/dev/paxparser/test/public-data/2014/04/MX/2014/04/SASE.csv"
+(defn test-mx-citypair []
+  (let [in "/home/pdeschacht/dev/paxparser/test/public-data/2014/04/MX/2014/04/SASE_ABRIL.xlsx"
+        out "/home/pdeschacht/dev/paxparser/test/public-data/2014/04/MX/2014/04/SASE_ABRIL.csv"
         year 2014
         motive "totint"
         sheet "REG INT"
-        specs (mx-sase-spec year motive)
+        specs (mx-citypair-spec year motive)
         ]
     
-    (pax/convert-pax-file in (mx-sase-spec year motive) out sheet)
+    (pax/convert-pax-file in specs out sheet)
     ))
 
 
-(defn mx-test-airport []
+(defn test-mx-airport []
   (let [in "/home/pdeschacht/dev/paxparser/test/public-data/2014/04/MX/2014/04/AEROPUERTOS_Abril_Details.xls"
         out "/home/pdeschacht/dev/paxparser/test/public-data/2014/04/MX/2014/04/AEROPUERTOS_Abril_Details.csv"
         sheet "Details"
@@ -192,8 +192,8 @@
       )
     ))
 
-(defn mx-test []
+(defn test-mx []
   (do
-    (mx-test-city-pair)
-    (mx-test-airport))
+    (test-mx-citypair)
+    (test-mx-airport))
   )

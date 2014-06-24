@@ -6,13 +6,13 @@
 ;; ANAC (format starting from 2014)
 ;
 (defn anac-get-airport-icao []
-  (fn [specs value]
+  (fn [specs value & line]
     (if (substring? "Aeroporto" value)
       (apply str (take 4 (clojure.string/trim value)))
       nil)))
 
 (defn anac-get-airport-name []
-  (fn [specs value]
+  (fn [specs value & line]
     (if (substring? "Aeroporto" value)
       (apply str (drop 7 (clojure.string/trim value)))
       nil)))
@@ -24,7 +24,7 @@
 ;; Therefore, the values "not-regular" and "skip" play a role
 ;;
 (defn anac-is-regular []
-  (fn [specs value]
+  (fn [specs value & line]
     (if (substring? "TRANSPORTE NÃO REGULAR" value)
       "not-regular"
       (if (substring? "TRANSPORTE REGULAR" value)
@@ -33,7 +33,7 @@
         ))))
 
 (defn anac-is-domestic []
-  (fn [specs value]
+  (fn [specs value & line]
     (if (substring? "DOMÉSTICO" value)
       "dom"
       (if (substring? "INTERNACIONAL" value)
@@ -99,41 +99,85 @@
              {:name "depint" :transform (convert-to-int) :transform-line (anac-international)}]
    :output (generic-pax-output)
    })
+;;
+;; 
+;; CONVERT TO OLD FORMAT (only keep total domestic and total international)
+;;
+;;
+(defn anac-totdom []
+  (fn [specs cells value]
+    (if (and (not (nil? value))
+             (not (nil? (get-named-cell-value "origin-airport-icao" cells)))
+             (= "regular" (get-named-cell-value "regular" cells))
+             (= "dom" (get-named-cell-value "domestic" cells)))
+      value
+      nil)))
 
-(defn test-anac-2014-core []
-  (let [f1 "/home/pdeschacht/dev/paxparser/test/public-data/2014/02/ANAC/2014/01/Jan.xls"
-        f2 "/home/pdeschacht/dev/paxparser/test/public-data/2014/02/ANAC/2014/01/test.csv"
+(defn anac-totint []
+  (fn [specs cells value]
+    (if (and (not (nil? value))
+             (not (nil? (get-named-cell-value "origin-airport-icao" cells)))
+             (= "regular" (get-named-cell-value "regular" cells))
+             (= "int" (get-named-cell-value "domestic" cells)))
+      value
+      nil))  )
+
+(defn anac-tottot []
+  (fn [specs cells value]
+    (if (and (not (nil? value))
+             (not (nil? (get-named-cell-value "origin-airport-icao" cells)))
+             (= "TRANSPORTE REGULAR" (get-named-cell-value "info" cells)))
+      value
+      nil))  )
+
+
+(defn anac-skip [words]
+  (fn [specs value]
+    (if (some #(= value %1) words)
+      true
+      false)))
+
+(def anac-2014-spec-convert-to-old
+  {:global {:thousand-separator ""
+            :decimal-separator "."
+            :output-separator "\t"
+            }
+
+   :skip [(line-contains? ["Discriminação" "INFRAERO" "Movimento" "CABOTAGEM" "SUPERINTENDÊNCIA" "REGIONAL"])]
+   
+   :tokens [{:index 1 :name "info" :split (copy-into-cells ["info" "origin-airport-icao" "origin-airport-name" "regular" "domestic" ])}
+            {:index 6 :name "total" :split (copy-into-cells ["totdom" "totint" "tottot"])}
+            ]
+   
+   :columns [{:name "info" :skip-line (anac-skip ["NACIONAL"])}
+             {:name "paxtype" :value "airport"}
+             {:name "paxsource" :value "ANAC_2"}
+             {:name "origin-airport-icao" :repeat-down true :transform (anac-get-airport-icao) :skip-line (anac-cell-empty?)}
+             {:name "origin-airport-name" :repeat-down true :transform (anac-get-airport-name)}
+             {:name "regular" :repeat-down true :transform (anac-is-regular) :skip-line (cell-contains? ["skip" "not-regular"])}
+             {:name "domestic" :repeat-down true :transform (anac-is-domestic)}
+             {:name "totdom" :transform (convert-to-int) :transform-line (anac-totdom)}
+             {:name "totint" :transform (convert-to-int) :transform-line (anac-totint)}
+             {:name "tottot" :transform (convert-to-int) :transform-line (anac-tottot)}]
+   :output [{:name "type" :value "airport"}
+            {:name "origin-airport-icao"}
+            {:name "origin-airport-iata" :value ""}
+            {:name "origin-airport-name"}
+            {:name "totdom"}
+            {:name "totint"}
+            {:name "tottot"}]
+   })
+;;
+;; test
+;;
+(defn test-anac-2014-convert-to-old []
+  (let [f1 "/home/pdeschacht/dev/airtraffic2/pax/download/2014/06/ANAC/2014/04/Abr.xls"
+        f2 "/home/pdeschacht/dev/airtraffic2/pax/download/2014/06/ANAC/2014/04/01_importAirport.csv"
         sheetname "Passageiros"]
-    (parser.pax.core/convert-pax-file f1 anac-2-spec f2 sheetname)))
-
+    (parser.pax.core/convert-pax-file f1 anac-2014-spec-convert-to-old f2 sheetname)))
 
 (defn test-anac-2014 []
-  (let [f1 "/home/pdeschacht/dev/paxparser/test/public-data/2014/02/ANAC/2014/01/Jan.xls"
-        f2 "/home/pdeschacht/dev/paxparser/test/public-data/2014/02/ANAC/2014/01/test.csv"
-        output-filename f2
-        sheetname "Passageiros"
-        file-info (extract-file-information f1)
-        specs (merge anac-2-spec {:global (merge (:global anac-2-spec) {:file-info file-info})})
-        specs* (add-defaults-to-specs specs)
-        params {:filename f1 :sheetname sheetname}
-        lines (read-lines params)
-        ]
-
-        (->> lines
-         (wrap-text-lines)
-         (skip-lines (:skip specs*))
-         (remove-skip-lines)
-         (stop-after (:stop specs*))
-         (tokenize-lines (get-in specs* [:global :token-separator]) (get-in specs* [:global :quote]))
-         (lines-to-cells (:tokens specs*))
-         (merge-lines-with-column-specs (:columns specs*))
-         (add-new-column-specs-lines (:columns specs*))
-         (merge-lines specs*)
-         (transform-lines specs*)
-         (repeat-down-lines specs*)
-         (transform-full-lines specs*)
-         (skip-transformed-lines specs*)
-         (output-lines specs*)
-         (clean-outputs-lines)
-         (outputs-to-csv-lines (get-in specs* [:global :output-separator]))
-         (csv-outputs-to-file output-filename))))
+  (let [f1 "/home/pdeschacht/dev/paxparser/test/public-data/2014/02/ANAC/2014/03/Mar.xls"
+        f2 "/home/pdeschacht/dev/paxparser/test/public-data/2014/02/ANAC/2014/03/Mar.csv"
+        sheetname "Passageiros"]
+    (parser.pax.core/convert-pax-file f1 anac-2014-spec f2 sheetname)))

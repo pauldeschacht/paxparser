@@ -9,7 +9,7 @@
   )
 
 (defn dgca-month []
-  (fn [specs value]
+  (fn [specs value & line]
     (-> value
         (clojure.string/trim)
         (clojure.string/replace "(R)" "")

@@ -7,13 +7,13 @@
   )
 
 (defn bts-trim []
-  (fn [specs value]
+  (fn [specs value & line]
     (if (empty? value)
       nil
       (clojure.string/trim value))))
 
 (defn bts-take-city-name []
-  (fn [specs value]
+  (fn [specs value & line]
     (if-let [tokens (clojure.string/split value #",")]
       (first tokens)
       "")))
@@ -28,7 +28,7 @@
       )))
 
 (defn bts-valid-from []
-  (fn [specs value]
+  (fn [specs value & line]
     (let [tokens (clojure.string/split value (re-pattern "-"))
           year (bts-safe-to-int (first tokens))
           month (bts-safe-to-int (second tokens))
@@ -37,7 +37,7 @@
   )
 
 (defn bts-valid-to []
-  (fn [specs value]
+  (fn [specs value & line]
     (let [tokens (clojure.string/split value (re-pattern "-"))
           year (bts-safe-to-int (first tokens))
           month (bts-safe-to-int (second tokens))
@@ -46,7 +46,7 @@
   )
 
 (defn bts-clean []
-  (fn [specs value]
+  (fn [specs value & line]
     (if (empty? value)
       nil
       (-> value
@@ -148,40 +148,4 @@
   (let [f1 "/home/pdeschacht/dev/paxparser/test/public-data/2014/02/BTS/T100/2013/08/BTS_T100.csv"
         f2 "/home/pdeschacht/dev/paxparser/test/public-data/2014/02/BTS/T100/2013/08/BTS_T100_parsed.csv"]
     (convert-pax-file f1 bts-t100-spec f2))
-  )
-
-(defn test-bts-db1b []
-  (let [f1 "test/public-data/2014/02/BTS/DB1B/2013/Q3/BTSDB1B.csv"
-        f2 "test/public-data/2014/02/BTS/DB1B/2013/Q3/test.csv"
-        sheetname ""
-        file-info (extract-file-information f1)
-        specs (merge bts-db1b-spec
-                     {:global (merge (:global bts-db1b-spec)
-                                     {:file-info file-info})})
-        specs* (add-defaults-to-specs specs)
-        params {:filename f1 :sheetname sheetname}
-        lines (read-lines params)
-        _ (println "processing data")
-        ]
-
-    (->> lines
-         (wrap-text-lines)
-         (skip-lines (:skip specs*))
-         (stop-after (:stop specs*))
-         (remove-skip-lines)
-         (tokenize-lines (re-pattern (get-in specs* [:global :token-separator])))
-;         (map #(dissoc %1 :text))
-         (lines-to-cells (:tokens specs*))
- ;        (map #(dissoc %1 :tokens))
-         (merge-lines-with-column-specs (:columns specs*))
-         (add-new-column-specs-lines (:columns specs*))
-  ;       (map #(dissoc %1) :cells)
-         (transform-lines specs*)
-         (repeat-down-lines specs*)
-         (output-lines specs*)
-         (clean-outputs-lines)
-         (outputs-to-csv-lines (get-in specs* [:global :output-separator]))
-         (csv-outputs-to-file f2)
-         )
-    )
   )

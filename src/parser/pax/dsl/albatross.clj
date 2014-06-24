@@ -4,11 +4,11 @@
   (:use [parser.pax.dsl.generic-pax-output]))
 
 (defn albatross-convert-to-int []
-  (fn [specs value]
+  (fn [specs value & line]
     (if (empty? (clojure.string/trim value))
       nil
       (try
-        (Integer/parseInt value)
+        (int (Double/parseDouble value))
         (catch Exception e (println (.getMessage e)))))))
 
 (def albatross-spec
@@ -126,29 +126,7 @@
 
 (defn test-albatross []
   (let [f1 "/home/pdeschacht/dev/paxparser/test/private-data/2014/02/Albatross/2014/02/Albatross.xlsx"
-        f2 "/home/pdeschacht/dev/paxparser/test/private-data/2014/02/Albatross/2014/02/test.csv"
+        f2 "/home/pdeschacht/dev/paxparser/test/private-data/2014/02/Albatross/2014/02/Albatross.csv"
         sheetname "Sheet1"
-        file-info (extract-file-information f1)
-        specs (merge albatross-spec {:global (merge (:global albatross-spec) {:file-info file-info})})
-        specs* (add-defaults-to-specs specs)
-        params {:filename f1 :sheetname sheetname :max 200}
-        lines (read-lines params)
         ]
-
-    (->> lines
-         (wrap-text-lines)
-         (skip-lines (:skip specs*))
-         (remove-skip-lines)
-         (stop-after (:stop specs*))
-         (tokenize-lines (re-pattern (get-in specs* [:global :token-separator])))
-         (lines-to-cells (:tokens specs*))
-         (merge-lines-with-column-specs (:columns specs*))
-         (add-new-column-specs-lines (:columns specs*))
-         (transform-lines specs*)
-         (repeat-down-lines specs*)
-         (output-lines specs*)
-         (clean-outputs-lines)
-         (outputs-to-csv-lines (get-in specs* [:global :output-separator]))
-         (csv-outputs-to-file f2)
-         )
-    ))
+    (convert-pax-file f1 albatross-spec f2 sheetname)))

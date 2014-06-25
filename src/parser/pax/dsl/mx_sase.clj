@@ -7,7 +7,7 @@
 ;;
 ;; MX SASE XLSX 
 ;;
-(def mx-month-lst ["jan" "feb" "mar" "apr" "may" "jun" "jul" "aug" "sep" "oct" "nov" "d-ec"])
+(def mx-month-lst ["jan" "feb" "mar" "apr" "may" "jun" "jul" "aug" "sep" "oct" "nov" "dec"])
 
 ;;
 ;; transform name of the month to the index (example "may" --> 5)
@@ -63,7 +63,7 @@
 (defn mx-citypair-spec [year motive]
   {:global {:thousand-separator ""
             :decimal-separator ""
-            :output-separator ","}
+            :output-separator "\t"}
    
    :skip [(line-empty?)
           (line-contains? ["ESTADISTICA" "SERVICIO" "CIUDADES" "ORIGEN" "DESTINO" "TOTAL" "T O T A L"])
@@ -170,12 +170,14 @@
   (let [in "/home/pdeschacht/dev/paxparser/test/public-data/2014/04/MX/2014/04/SASE_ABRIL.xlsx"
         out "/home/pdeschacht/dev/paxparser/test/public-data/2014/04/MX/2014/04/SASE_ABRIL.csv"
         year 2014
-        motive "totint"
         sheet "REG INT"
-        specs (mx-citypair-spec year motive)
         ]
+    (do
+      (pax/convert-pax-file in (mx-citypair-spec year "totdom") out "REG NAC")
+      (pax/convert-pax-file in (mx-citypair-spec year "totint") out "REG INT")
+      )
     
-    (pax/convert-pax-file in specs out sheet)
+    
     ))
 
 

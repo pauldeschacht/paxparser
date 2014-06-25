@@ -47,7 +47,7 @@
 (defn test-dhmi []
   (let [f1 "/home/pdeschacht/dev/paxparser/test/public-data/2014/05/DHMI/2014/01/airport.xlsx"
         f2 "/home/pdeschacht/dev/paxparser/test/public-data/2014/05/DHMI/2014/01/airport.csv"
-        sheetname "TÜM UÇAK"
+        sheetname "YOLCU"
         ]
     (convert-pax-file f1 dhmi-spec f2 sheetname)))
 

@@ -139,14 +139,16 @@
   (fn [specs value & line]
     (get-in specs [:global :file-info :valid-to-str])))
 
+(defn add-pax-info-to-specs [specs input-filename]
+  (let [ file-info (extract-file-information input-filename)]
+    (merge specs {:global  (merge (:global specs) {:file-info file-info})})))
 
 (defn convert-pax-file
-  ([in-filename specs out-filename]
-     (let [file-info (extract-file-information in-filename)
-           specs* (merge specs {:global  (merge (:global specs) {:file-info file-info})})]
+  ([input-filename specs output-filename]
+     (let [specs* (add-pax-info-to-specs [specs input-filename])]
        (try
-         (parser/convert-file in-filename specs* out-filename nil)
-         (catch Exception e (str "Exception while processing input " in-filename "\n" (.getMessage e))))
+         (parser/convert-file input-filename specs* output-filename nil)
+         (catch Exception e (str "Exception while processing input " input-filename "\n" (.getMessage e))))
        
 
        ))

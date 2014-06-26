@@ -600,44 +600,38 @@
    :output (:output specs)
    :outputs (:outputs specs)})
 
+(defn read-file [input-filename sheetname]
+  (read-lines {:filename input-filename :sheetname sheetname}))
+
 (defn process-lines [specs lines]
   (->> lines
-       (wrap-text-lines)
-       (skip-lines (:skip specs))
-       (remove-skip-lines)
-       (tokenize-lines (get-in specs [:global :token-separator]) (get-in specs [:global :quote]))
-       (lines-to-cells (:tokens specs))
-       (merge-lines-with-column-specs (:columns specs))
-       (add-new-column-specs-lines (:columns specs))
-       (merge-lines specs)
-       (transform-lines specs)
-       (repeat-down-lines specs)
+         (wrap-text-lines)
+         (skip-lines (:skip specs))
+         (remove-skip-lines)
+         (stop-after (:stop specs))
+         (tokenize-lines (get-in specs [:global :token-separator]) (get-in specs [:global :quote]))
+         (lines-to-cells (:tokens specs))
+         (transpose-lines (:transpose specs))
+         (merge-lines-with-column-specs (:columns specs))
+         (add-new-column-specs-lines (:columns specs))
+         (merge-lines specs)
+         (transform-lines specs)
+         (repeat-down-lines specs)
+         (transform-full-lines specs)
+         (skip-transformed-lines specs)
+         ))
+
+(defn lines-to-outputs [specs lines]
+  (->> lines
        (output-lines specs)
        (clean-outputs-lines)
-       (outputs-to-csv-lines (get-in specs [:global :output-separator]))
-       ))
+       (outputs-to-csv-lines (get-in specs [:global :output-separator]))))
 
 (defn convert-file [input-filename specs output-filename sheetname]
-  (let [params {:filename input-filename :sheetname sheetname}
-       specs* (add-defaults-to-specs specs)
-        lines (read-lines params)]
+  (let [specs* (add-defaults-to-specs specs)
+        lines (read-file input-filename sheetname)]
     (->> lines
-         (wrap-text-lines)
-         (skip-lines (:skip specs*))
-         (remove-skip-lines)
-         (stop-after (:stop specs*))
-         (tokenize-lines (get-in specs* [:global :token-separator]) (get-in specs* [:global :quote]))
-         (lines-to-cells (:tokens specs*))
-         (transpose-lines (:transpose specs*))
-         (merge-lines-with-column-specs (:columns specs*))
-         (add-new-column-specs-lines (:columns specs*))
-         (merge-lines specs*)
-         (transform-lines specs*)
-         (repeat-down-lines specs*)
-         (transform-full-lines specs*)
-         (skip-transformed-lines specs*)
-         (output-lines specs*)
-         (clean-outputs-lines)
-         (outputs-to-csv-lines (get-in specs* [:global :output-separator]))
+         (process-lines specs*)
+         (lines-to-outputs specs*)
          (csv-outputs-to-file output-filename)
          )))

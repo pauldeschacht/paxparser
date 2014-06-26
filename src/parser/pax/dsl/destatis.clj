@@ -234,26 +234,3 @@
 
    :outputs (destatis-int-outputs)
    })
-;;
-;;
-;;
-(defn test-destatis-dom []
-  (let [f1 "/home/pdeschacht/dev/paxparser/test/public-data/2014/02/Destatis/2014/01/Destatis.xlsx"
-        f2 "/home/pdeschacht/dev/paxparser/test/public-data/2014/02/Destatis/2014/01/Destatis_dom.csv"
-        sheetname "2.2.1"]
-    (convert-pax-file f1 destatis-dom-spec f2 sheetname)
-    ))
-
-(defn test-destatis-int []
-  (let [f1 "/home/pdeschacht/dev/paxparser/test/public-data/2014/02/Destatis/2014/01/Destatis.xlsx"
-        f2 "/home/pdeschacht/dev/paxparser/test/public-data/2014/02/Destatis/2014/01/Destatis_int_airportpair.csv"
-        sheetname "2.3.2"]
-    (convert-pax-file f1 destatis-int-airportpair-spec f2 sheetname)
-    ))
-
-(defn test-destatis-int-countryairport []
-  (let [f1 "/home/pdeschacht/dev/paxparser/test/public-data/2014/02/Destatis/2014/01/Destatis.xlsx"
-        f2 "/home/pdeschacht/dev/paxparser/test/public-data/2014/02/Destatis/2014/01/Destatis_int_countrypair.csv"
-        sheetname "2.3.2"]
-    (convert-pax-file f1 destatis-int-countryairport-spec f2 sheetname)
-    ))

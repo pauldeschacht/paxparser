@@ -62,10 +62,3 @@
    :output (generic-pax-output)
    }
   )
-
-(defn test-clac[]
-  (let [f1 "/home/pdeschacht/dev/paxparser/test/public-data/2014/02/CLAC/2013/04/CLAC_2013.xls"
-        f2 "/home/pdeschacht/dev/paxparser/test/public-data/2014/02/CLAC/2013/04/CLAC_2013.csv"
-        sheet "Registro Datos"]
-    (convert-pax-file f1 clac-spec f2 sheet))
-)

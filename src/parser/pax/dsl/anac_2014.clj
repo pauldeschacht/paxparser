@@ -167,17 +167,3 @@
             {:name "totint"}
             {:name "tottot"}]
    })
-;;
-;; test
-;;
-(defn test-anac-2014-convert-to-old []
-  (let [f1 "/home/pdeschacht/dev/airtraffic2/pax/download/2014/06/ANAC/2014/04/Abr.xls"
-        f2 "/home/pdeschacht/dev/airtraffic2/pax/download/2014/06/ANAC/2014/04/01_importAirport.csv"
-        sheetname "Passageiros"]
-    (parser.pax.core/convert-pax-file f1 anac-2014-spec-convert-to-old f2 sheetname)))
-
-(defn test-anac-2014 []
-  (let [f1 "/home/pdeschacht/dev/paxparser/test/public-data/2014/02/ANAC/2014/03/Mar.xls"
-        f2 "/home/pdeschacht/dev/paxparser/test/public-data/2014/02/ANAC/2014/03/Mar.csv"
-        sheetname "Passageiros"]
-    (parser.pax.core/convert-pax-file f1 anac-2014-spec f2 sheetname)))

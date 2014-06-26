@@ -51,15 +51,6 @@
    :output (generic-pax-output)
    })
 
-(defn test-anac []
-  (let [in "/home/pdeschacht/dev/paxparser/test/public-data/2014/02/ANAC/2013/12/ANAC.xlsx"
-        out "/home/pdeschacht/dev/paxparser/test/public-data/2014/02/ANAC/2013/12/ANAC.csv"
-        sheet "Sheet1"
-        ]
-    (convert-pax-file in anac-spec out sheet)
-    )
-  )
-
 (defn anac-all [folder]
   (for [year (range 2012 2013)
         month (range 1 13)]

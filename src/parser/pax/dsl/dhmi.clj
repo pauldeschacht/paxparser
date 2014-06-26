@@ -44,16 +44,6 @@
    :output (generic-pax-output)
    })
 
-(defn test-dhmi []
-  (let [f1 "/home/pdeschacht/dev/paxparser/test/public-data/2014/05/DHMI/2014/01/airport.xlsx"
-        f2 "/home/pdeschacht/dev/paxparser/test/public-data/2014/05/DHMI/2014/01/airport.csv"
-        sheetname "YOLCU"
-        ]
-    (convert-pax-file f1 dhmi-spec f2 sheetname)))
-
-(defn dhmi [f1 f2 sheetname]
-  (convert-pax-file f1 dhmi-spec f2 sheetname))
-
 (defn- get-sheetname [year month]
   (case year
     2009 (case month

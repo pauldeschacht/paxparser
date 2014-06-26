@@ -165,37 +165,3 @@
    :output (generic-pax-output)
    }
   )
-
-(defn test-mx-citypair []
-  (let [in "/home/pdeschacht/dev/paxparser/test/public-data/2014/04/MX/2014/04/SASE_ABRIL.xlsx"
-        out "/home/pdeschacht/dev/paxparser/test/public-data/2014/04/MX/2014/04/SASE_ABRIL.csv"
-        year 2014
-        sheet "REG INT"
-        ]
-    (do
-      (pax/convert-pax-file in (mx-citypair-spec year "totdom") out "REG NAC")
-      (pax/convert-pax-file in (mx-citypair-spec year "totint") out "REG INT")
-      )
-    
-    
-    ))
-
-
-(defn test-mx-airport []
-  (let [in "/home/pdeschacht/dev/paxparser/test/public-data/2014/04/MX/2014/04/AEROPUERTOS_Abril_Details.xls"
-        out "/home/pdeschacht/dev/paxparser/test/public-data/2014/04/MX/2014/04/AEROPUERTOS_Abril_Details.csv"
-        sheet "Details"
-        specs-dom (mx-airport-spec "totdom" ["YEAR" "INTERNATIONAL"])
-        specs-int (mx-airport-spec "totint" ["YEAR" "DOMESTIC"])
-        ]
-    (do
-      (pax/convert-pax-file in specs-dom out sheet)
-      (pax/convert-pax-file in specs-int out sheet)
-      )
-    ))
-
-(defn test-mx []
-  (do
-    (test-mx-citypair)
-    (test-mx-airport))
-  )

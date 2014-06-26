@@ -54,7 +54,7 @@
 ;;
 ;; BTRE INTERNATIONAL
 ;;
-(def btre-int-pax-spec
+(def btre-int-airportpair-spec
   {:global {:thousand-separator " "
             :decimal-separator "."
             :output-separator ","
@@ -140,26 +140,3 @@
                                 )
               ]
    })
-
-(defn test-btre-dom []
-  (let [f1 "/home/pdeschacht/dev/paxparser/test/public-data/2014/02/BTRE_Australia/2013/10/BTRE_Domestic_airlines_Nov_2013.xls"
-        f2 "/home/pdeschacht/dev/paxparser/test/public-data/2014/02/BTRE_Australia/2013/10/BTRE_Domestic_CityPair.csv"
-        sheetname "Passengers"
-        ]
-    (convert-pax-file f1 btre-dom-spec f2 sheetname))
-  )
-
-(defn test-btre-int-airportpair []
-  (let [f1 "/home/pdeschacht/dev/paxparser/test/public-data/2014/02/BTRE_Australia/2013/10/BTRE_International_airline_activity_1310_Tables.xls"
-        f2 "/home/pdeschacht/dev/paxparser/test/public-data/2014/02/BTRE_Australia/2013/10/BTRE_International_AirportportPair.csv"
-        sheetname "Table_5"
-        ]
-    (convert-pax-file f1 btre-int-pax-spec f2 sheetname)))
-
-
-(defn test-btre-int-countrypairairline []
-  (let [f1 "/home/pdeschacht/dev/paxparser/test/public-data/2014/02/BTRE_Australia/2013/10/BTRE_International_airline_activity_1310_Tables.xls"
-        f2 "/home/pdeschacht/dev/paxparser/test/public-data/2014/02/BTRE_Australia/2013/10/BTRE_Internaional_CountryPairAirline.csv"
-        sheetname "Table_3"
-        ]
-    (convert-pax-file f1 btre-int-countrypairairline-spec f2 sheetname)))

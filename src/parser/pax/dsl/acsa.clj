@@ -85,11 +85,3 @@
    :output (generic-pax-output)
    }
   )
-
-(defn test-acsa []
-  (let [f1 "/home/pdeschacht/dev/paxparser/test/public-data/2014/02/ACSA/2014/01/manual entries.xlsx"
-        f2 "/home/pdeschacht/dev/paxparser/test/public-data/2014/02/ACSA/2014/01/acsa.csv"
-        ]
-    (convert-pax-file f1 acsa-spec f2 "Sheet1"))
-  )
-

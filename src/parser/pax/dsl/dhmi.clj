@@ -16,6 +16,10 @@
            (clojure.string/trim))
       )))
 
+(defn dhmi-cell-empty? []
+  (fn [specs value]
+    (nil? value)))
+
 (def dhmi-spec
   {:global {:thousand-separator ""
             :output-separator ","}
@@ -33,7 +37,7 @@
              {:name "capture-date" :transform (get-capture-date)}
              {:name "valid-from" :transform (get-valid-from)}
              {:name "valid-to" :transform (get-valid-to)}
-             {:name "origin-airport-name" :transform (dhmi-trim)}
+             {:name "origin-airport-name" :transform (dhmi-trim) :skip-line (dhmi-cell-empty?)}
              {:name "metric" :value "pax"}
              {:name "segment" :value nil}
              {:name "totdom" :transform (convert-to-int)}

@@ -53,6 +53,9 @@
     )
   )
 
+(defn dhmi [in out sheet]
+  (convert-pax-file in dhmi-spec out sheet))
+
 (defn dhmi-all []
   (let [folder "/home/pdeschacht/dev/paxparser/test/public-data/2014/05/DHMI"]
     (for [year (range 2010 2015)
@@ -62,6 +65,8 @@
                        (format "%02d" month) "/"
                        "airport.xlsx")
             output (str folder "/"
+                        year "/"
+                        (format "%02d" month) "/"
                         "dhmi.csv")
             sheet (get-sheetname year month)
             ]

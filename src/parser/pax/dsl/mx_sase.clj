@@ -8,7 +8,14 @@
 ;; MX SASE XLSX 
 ;;
 (def mx-month-lst ["jan" "feb" "mar" "apr" "may" "jun" "jul" "aug" "sep" "oct" "nov" "dec"])
-
+;;
+;; trim 
+;;
+(defn- mx-trim []
+  (fn [specs value lines]
+    (if (nil? value)
+      value
+      (clojure.string/trim value))))
 ;;
 ;; transform name of the month to the index (example "may" --> 5)
 ;; 
@@ -38,16 +45,18 @@
 ;;
 (defn mx-sase-valid [start-or-end]
   (fn [specs value line]
-    (let [year (mx-get-value-with-name line "valid-year")
-          year* (if (= (class year) java.lang.String)
-                  (int (Double/parseDouble year))
-                  year
-                  )
+    (let [;;year (mx-get-value-with-name line "valid-year")
+          ;; year* (if (= (class year) java.lang.String)
+          ;;         (int (Double/parseDouble year))
+          ;;         year
+          ;;         )
+          valid (get-in specs [:global :file-info :valid])
+          year (t/year (t/start valid))
           ]
       (->> (mx-get-value-with-name line "month")
            (index-of mx-month-lst)
            (inc)
-           (pax/valid-period-month year*)
+           (pax/valid-period-month year)
            (start-or-end)
            (pax/date-to-str)
            ))))
@@ -60,13 +69,13 @@
 ;;
 ;; parse the excel with city pair data
 ;;
-(defn mx-citypair-spec [year motive]
+(def mx-citypair-spec
   {:global {:thousand-separator ""
             :decimal-separator ""
-            :output-separator "\t"}
+            :output-separator "^"}
    
    :skip [(line-empty?)
-          (line-contains? ["ESTADISTICA" "SERVICIO" "CIUDADES" "ORIGEN" "DESTINO" "TOTAL" "T O T A L"])
+          (line-contains? ["ESTADISTICA" "SERVICIO" "CIUDADES" "ORIGEN" "DESTINO" "TOTAL" "T O T A L" "VUELOS"])
           ]
    
    :tokens [{:index 0 :name "origin-city-name"}
@@ -86,14 +95,14 @@
             ]
    
    :transpose {:header-column "month"
-               :value-column motive
+               :value-column "tottot"
                :tokens mx-month-lst
                }
    
    :columns [{:name "paxtype" :value "citypair"}
-             {:name "paxsource" :value "MEX_SASE"}
+             {:name "paxsource" :value "MX"}
 
-             {:name "valid-year" :value year}  ;; for mx-sase-valid-from/-to
+;;             {:name "valid-year" :value year}  ;; for mx-sase-valid-from/-to
 
              {:name "fullname" :transform (get-fullname)}
              {:name "capture-date" :transform (get-capture-date)}
@@ -106,7 +115,7 @@
              {:name "origin-city-name"}
              {:name "destination-city-name"}
              {:name "month"}
-             {:name motive :transform (core/convert-to-int) :skip-line (mx-skip-if-zero)}
+             {:name "tottot" :transform (core/convert-to-int) :skip-line (mx-skip-if-zero)}
              ]
    
    :output (generic-pax-output)
@@ -148,7 +157,7 @@
                }
 
    :columns [{:name "paxtype" :value "airport"}
-             {:name "paxsource" :value "MEX_AIRPORT"}
+             {:name "paxsource" :value "MX"}
 
              {:name "fullname" :transform (get-fullname)}
              {:name "capture-date" :transform (get-capture-date)}

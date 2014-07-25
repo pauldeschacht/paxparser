@@ -1,7 +1,10 @@
 (ns parser.pax.dsl.anac-2014
   (:use [parser.core])
   (:use [parser.pax.core])
-  (:use [parser.pax.dsl.generic-pax-output]))
+  (:use [parser.pax.dsl.generic-pax-output])
+  (:use [clojure.data.csv])
+  (:use [clojure.java.io])
+  )
 ;;
 ;; ANAC (format starting from 2014)
 ;
@@ -25,22 +28,33 @@
 ;;
 (defn anac-is-regular []
   (fn [specs value & line]
-    (if (substring? "TRANSPORTE NÃO REGULAR" value)
+    (if (or (substring? "TRANSPORTE NÃO REGULAR" value)
+            (substring? "Transporte Não Regular" value))
       "not-regular"
-      (if (substring? "TRANSPORTE REGULAR" value)
+      (if (or (substring? "TRANSPORTE REGULAR" value)
+              (substring? "Transporte Regular" value))
+        
         "regular"
         nil
         ))))
 
 (defn anac-is-domestic []
   (fn [specs value & line]
-    (if (substring? "DOMÉSTICO" value)
+    (if (or (substring? "DOMÉSTICO" value)
+            (substring? "Doméstico" value))
       "dom"
-      (if (substring? "INTERNACIONAL" value)
+      (if (or (substring? "INTERNACIONAL" value)
+              (substring? "Internacional" value))
         "int"
         (if (or (substring? "TRANSPORTE" value)
+                (substring? "Transporte" value)
+                (substring? "Cabotagem" value)
+                (substring? "Aeroporto" value)
                 (= "NACIONAL" value)
-                (= "REGIONAL" value))
+                (= "Nacional" value)
+                (= "REGIONAL" value)
+                (= "Regional" value)
+                )
           "skip"
           nil
           )))))
@@ -80,7 +94,7 @@
             {:index 4 :name "departures" :split (copy-into-cells ["depdom" "depint"])}
             ]
    
-   :columns [{:name "info" :skip-line (cell-contains? ["TRANSPORTE"])}
+   :columns [{:name "info" :skip-line (cell-contains? ["TRANSPORTE" "Transporte"])}
              {:name "paxtype" :value "airport"}
              {:name "paxsource" :value "ANAC_2"}
              {:name "fullname" :transform (get-fullname)}
@@ -138,7 +152,7 @@
       false)))
 
 (def anac-2014-spec-convert-to-old
-  {:global {:thousand-separator ""
+  {:global {:thousand-separator ","
             :decimal-separator "."
             :output-separator "\t"
             }
@@ -155,7 +169,7 @@
              {:name "origin-airport-icao" :repeat-down true :transform (anac-get-airport-icao) :skip-line (anac-cell-empty?)}
              {:name "origin-airport-name" :repeat-down true :transform (anac-get-airport-name)}
              {:name "regular" :repeat-down true :transform (anac-is-regular) :skip-line (cell-contains? ["skip" "not-regular"])}
-             {:name "domestic" :repeat-down true :transform (anac-is-domestic)}
+             {:name "domestic" :repeat-down true :transform (anac-is-domestic) :skip-line (cell-contains? ["skip"])}
              {:name "totdom" :transform (convert-to-int) :transform-line (anac-totdom)}
              {:name "totint" :transform (convert-to-int) :transform-line (anac-totint)}
              {:name "tottot" :transform (convert-to-int) :transform-line (anac-tottot)}]
@@ -165,5 +179,62 @@
             {:name "origin-airport-name"}
             {:name "totdom"}
             {:name "totint"}
-            {:name "tottot"}]
+            {:name "tottot"}
+            ]
    })
+
+(defn empty-string? [k s] (or (nil? s) (= 0 (count s))))
+(defn valid-string? [k s] (not (empty-string? k s)))
+(defn dissoc-with-pred [f m]
+  (into {} (filter (fn [[k v]] (f k v)) m)))
+
+(defn group-airports [airports]
+  (->> airports 
+       (map #(zipmap [:type :icao :iata :name :totdom :totint :tottot] %) )
+       (map #(dissoc-with-pred valid-string? %))
+       (group-by :icao)
+       (map #(reduce merge {} (second %)))
+       (map #(merge {:type nil
+                     :icao nil
+                     :iata nil
+                     :name nil
+                     :totdom nil
+                     :totint nil
+                     :tottot nil
+                     } %))
+       (mapv #(mapv % [:type :icao :iata :name :totdom :totint :tottot]))))
+
+(defn group-airports-in-out [in out]
+  (let [airports (with-open [in-file (clojure.java.io/reader in)]
+                   (doall
+                    (clojure.data.csv/read-csv in-file :separator \tab)))
+        grouped (group-airports airports)
+        ]
+    (with-open [file (clojure.java.io/writer out)]
+      (clojure.data.csv/write-csv file grouped :separator \tab))))
+
+(def files [
+            "01/anac.xls"
+            "02/anac.xls"
+            "03/anac.xls"
+            "04/anac.xls"
+            "05/anac.xls"
+            "06/anac.xls"
+            ])
+
+(defn process-file [in]
+
+  (let [sheet "Passageiros"
+        path "/home/pdeschacht/dev/paxparser/test/public-data/2014/07/ANAC_Brasil/2014/"
+        infile (str path in)
+        temp (str infile ".txt")
+        dir (first (clojure.string/split in #"/"))
+        outfile (str path dir "/" "01_importAirport.csv")
+        _ (convert-pax-file infile anac-2014-spec-convert-to-old temp sheet)
+        _ (println outfile)
+        _ (group-airports-in-out temp outfile)]
+    ))
+
+(defn process-files [files]
+  (doall (map process-file files))
+  )

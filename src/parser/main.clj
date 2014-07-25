@@ -39,7 +39,7 @@
      (contains-all? s ["destatis" "2.2.1"]) destatis/destatis-dom-spec
      (contains-all? s ["destatis" "2.3.1"]) destatis/destatis-int-airportpair-spec
      (contains-all? s ["destatis" "2.2.2"]) destatis/destatis-int-countryairport-spec
-     (contains-all? s ["dhmi]) dhmi/dhmi-spec
+     (contains-all? s ["dhmi"]) dhmi/dhmi-spec
      (contains-all? s ["icao"]) icao-dataplus/icao-airport-spec
      (contains-all? s ["mx" "reg int"]) mx/mx-citypair-spec
      (contains-all? s ["mx" "reg nac"]) mx/mx-citypair-spec

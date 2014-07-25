@@ -3,8 +3,12 @@
   (:use [clj-time.core :exclude (second extend) :as t])
   (:use [clj-time.format :as f]))
 
+(defn- convert-int [s]
+  (int (Double/parseDouble s))
+  )
+
 (defn capture-date-str [year month]
-  (t/date-time (read-string year) (read-string month)))
+  (t/date-time (convert-int year) (convert-int month)))
 
 (defn valid-period-month
   ([^long year ^long month]

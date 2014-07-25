@@ -2,6 +2,8 @@
   (:use [clojure.java.io])
   (:use [dk.ative.docjure.spreadsheet])
   (:use [clojure.data.csv :as csv])
+  (:use [clojure.tools.logging :as log])
+  (:use [clojure.stacktrace])
   (:import (org.apache.poi.ss.usermodel Row Cell DataFormatter DateUtil)))
 ;;
 ;; debug function
@@ -10,6 +12,12 @@
   (do (println text " " data)
       (println "type = " (type data)))
   data)
+
+(defn log-data [text data]
+  (log/debug text)
+  (log/debug data)
+  data
+  )
 ;;
 ;; default function for the configuration
 ;;
@@ -523,7 +531,9 @@
          (map #(single-output-line full-output-specs %1))
          (map #(skip-single-output-line full-output-specs %1))
          (filter #(not (true? (:skip %))))
-         )))
+;;         (log-data "Output lines")
+         )
+    ))
 
 (defn multi-output-lines [multi-output-specs lines]
   (map #(single-output-lines %1 lines) multi-output-specs))
@@ -558,12 +568,14 @@
   (map #(output-to-csv-lines separator %1) lines))
 
 (defn csv-output-to-file [filename csv-lines]
-  (with-open [wrtr (writer filename :append true)]
-    (dorun (map (fn [line]
-                  (.write wrtr line)
-                  (.write wrtr "\n"))
-                csv-lines
-                )))
+  (let [;;_ (log-data "CSV" csv-lines)
+        ]
+    (with-open [wrtr (writer filename :append true)]
+      (dorun (map (fn [line]
+                    (.write wrtr line)
+                    (.write wrtr "\n"))
+                  csv-lines
+                  ))))
   true)
 
 (defn csv-outputs-to-file [filename outputs-csv-lines]
@@ -604,22 +616,33 @@
   (read-lines {:filename input-filename :sheetname sheetname}))
 
 (defn process-lines [specs lines]
-  (->> lines
+  (try
+    (->> lines
          (wrap-text-lines)
+         ;       (log-data "Raw lines")
          (skip-lines (:skip specs))
          (remove-skip-lines)
          (stop-after (:stop specs))
+;;         (log-data "Cleaned lines")
          (tokenize-lines (get-in specs [:global :token-separator]) (get-in specs [:global :quote]))
+         ;;       (log-data "Tokens")
          (lines-to-cells (:tokens specs))
+         ;;(log-data "Cells")
          (transpose-lines (:transpose specs))
          (merge-lines-with-column-specs (:columns specs))
          (add-new-column-specs-lines (:columns specs))
          (merge-lines specs)
+;;         (log-data "Merged lines")
          (transform-lines specs)
          (repeat-down-lines specs)
          (transform-full-lines specs)
          (skip-transformed-lines specs)
-         ))
+;;         (log-data "Result")
+         )
+    (catch Exception e
+      (print-stack-trace e)
+      (log/fatal e))
+    ))
 
 (defn lines-to-outputs [specs lines]
   (->> lines
@@ -630,8 +653,11 @@
 (defn convert-file [input-filename specs output-filename sheetname]
   (let [specs* (add-defaults-to-specs specs)
         lines (read-file input-filename sheetname)]
-    (->> lines
-         (process-lines specs*)
-         (lines-to-outputs specs*)
-         (csv-outputs-to-file output-filename)
-         )))
+    (try
+      (->> lines
+           (process-lines specs*)
+           (lines-to-outputs specs*)
+           (csv-outputs-to-file output-filename)
+           )
+      (catch Exception e
+        (print-stack-trace e)))))

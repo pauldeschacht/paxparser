@@ -11,9 +11,10 @@
         [parser.pax.dsl.destatis :as destatis]
         [parser.pax.dsl.dhmi :as dhmi]
         [parser.pax.dsl.mx-sase :as mx]
-        [parser.pax.dsl.icao-dataplus :as icao-dataplus])
-  
-  (:gen-class))
+        [parser.pax.dsl.icao-dataplus :as icao-dataplus]
+        [parser.pax.dsl.kac :as kac]
+        )
+    (:gen-class))
 
 (defn- substring*? [s sub]
   (cond
@@ -24,14 +25,16 @@
 (defn- contains-all? [s subs]
   (every? true? (map #(substring*? s %1) subs)))
 
-(defn- get-spec-for-source [in sheet]
-  (let [s (clojure.string/lower-case (str in " " sheet))]
+(defn- get-spec-for-source [in sheet hint]
+  (let [s (clojure.string/lower-case (str in " " sheet " " hint))]
     (cond
      (contains-all? s ["aci" "international"]) aci/aci-spec
      (contains-all? s ["acsa"]) acsa/acsa-spec
      (contains-all? s ["albatross"]) albatross/albatross-spec
-     (contains-all? s ["anac_brasil_2"]) anac/anac-spec
-     (contains-all? s ["anac_brasil_3"]) anac-2014/anac-2014-spec
+     ;;     (contains-all? s ["anac_brasil_2"]) anac/anac-spec
+     ;;     (contains-all? s ["anac_brasil_3"]) anac-2014/anac-2014-spec
+     ;;     (contains-all? s ["anac"]) anac-2014/anac-2014-spec
+     (contains-all? s ["anac"]) anac-2014/anac-2014-spec-convert-to-old
      (contains-all? s ["btre" "domestic"]) btre/btre-dom-spec
      (contains-all? s ["btre" "international" "Table_3"]) btre/btre-int-countrypairairline-spec
      (contains-all? s ["btre" "international" "Table_5"]) btre/btre-int-airportpair-spec
@@ -43,16 +46,17 @@
      (contains-all? s ["icao"]) icao-dataplus/icao-airport-spec
      (contains-all? s ["mx" "reg int"]) mx/mx-citypair-spec
      (contains-all? s ["mx" "reg nac"]) mx/mx-citypair-spec
+     (contains-all? s ["mx" "regnal"]) mx/mx-citypair-spec
      (contains-all? s ["mx" "regint"]) mx/mx-citypair-spec
      (contains-all? s ["mx" "regnac"]) mx/mx-citypair-spec
-     (contains-all? s ["mx" "details"]) [ (mx/mx-airport-spec "totdom" ["YEAR" "INTERNATIONAL"])
-                                      (mx/mx-airport-spec "totdom" ["YEAR" "DOMESTIC"]) ]
-     :else (throw (Exception. "Cannot determine the specs for the input (forget the name of the Excel sheet?) "))
-     )
+     (contains-all? s ["mx" "details"]) [(mx/mx-airport-spec "totdom" ["YEAR" "INTERNATIONAL"]) (mx/mx-airport-spec "totdom" ["YEAR" "DOMESTIC"]) ]
+     (contains-all? s ["kac"]) kac/kac-spec
+     :else (throw (Exception. "Cannot determine the specs for the input (forget the name of the Excel sheet?) ")))
     ))
 
-(defn process [in out sheet]
-  (let [spec (get-spec-for-source in sheet)]
+(defn process [in out sheet hint]
+  (let [spec (get-spec-for-source in sheet hint)
+	_ (println spec)]
     (if (seq? spec)
       (dorun (map #(convert-pax-file in %1 out sheet) spec))
       (convert-pax-file in spec out sheet))))
@@ -63,6 +67,7 @@
    ["-i" "--input INPUT" "input file name"]
    ["-s" "--sheet SHEET" "name of the sheet"]
    ["-o" "--output OUTPUT" "output file name"]
+   ["-h" "--hint HINT" "give hint for specifications"]
    ])
 
 (defn -main[& args]
@@ -70,8 +75,9 @@
         in (:input (:options options))
         sheet (:sheet (:options options))
         out (:output (:options options))
+        hint (:hint (:options options))
         ]
     (do
       (println (str "Parsing " in " into " out))
-      (process in out sheet)
+      (process in out sheet hint)
       )))

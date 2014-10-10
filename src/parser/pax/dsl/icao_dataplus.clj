@@ -113,7 +113,7 @@
             ]
    
    :columns [{:name "paxtype" :value "airport"}
-             {:name "paxsource" :value "ICAO"}
+             {:name "paxsource" :value "ICAO_DATAPLUS"}
 
              {:name "fullname" :transform (get-fullname)}
              {:name "capture-date" :transform (get-capture-date)}

@@ -225,11 +225,14 @@
 (defn process-file [in]
 
   (let [sheet "Passageiros"
-        path "/home/pdeschacht/dev/paxparser/test/public-data/2014/07/ANAC_Brasil/2014/"
+        path "/home/pdeschacht/dev/airtraffic2/pax/download/2014/08/ANAC/2014/06/"
         infile (str path in)
         temp (str infile ".txt")
         dir (first (clojure.string/split in #"/"))
-        outfile (str path dir "/" "01_importAirport.csv")
+        outfile (str path "01_importAirport.csv")
+        _ (println infile)
+        _ (println temp)
+        _ (println outfile)
         _ (convert-pax-file infile anac-2014-spec-convert-to-old temp sheet)
         _ (println outfile)
         _ (group-airports-in-out temp outfile)]

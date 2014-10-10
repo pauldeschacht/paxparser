@@ -40,6 +40,12 @@
       false))
   )
 
+(defn- mx-skip-if-empty []
+  (fn [specs value]
+    (if (or (nil? value)
+            (= 0 (count value)))
+      true
+      false)))
 ;;
 ;; the year is encoded in the data (and not in the filename as other files)
 ;;
@@ -112,8 +118,8 @@
              {:name "metric" :value "pax"}
              {:name "segment" :value nil}
 
-             {:name "origin-city-name"}
-             {:name "destination-city-name"}
+             {:name "origin-city-name" :skip-line (mx-skip-if-empty)}
+             {:name "destination-city-name" :skip-line (mx-skip-if-empty)}
              {:name "month"}
              {:name "tottot" :transform (core/convert-to-int) :skip-line (mx-skip-if-zero)}
              ]

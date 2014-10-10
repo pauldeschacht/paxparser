@@ -22,7 +22,7 @@
 
 (def dhmi-spec
   {:global {:thousand-separator ""
-            :output-separator ","}
+            :output-separator "^"}
 
    :skip [(line-contains? ["YILI" "TÜM UÇAK TRAFİĞİ" "YILI OCAK AYI" "Havalimanları" "İç Hat" "Dış Hat" "Toplam" "Kesin Olmayan" "Hava Alanları" "Havaalanları" "Gelen-Giden" "Passenger Traffic" "Yolcu Trafiği"])]
    :stop [(line-contains? ["DHMİ TOPLAMI"])]

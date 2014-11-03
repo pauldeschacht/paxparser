@@ -157,6 +157,21 @@
        (row-seq)
        ))
 
+(defn get-all-sheet-names [workbook]
+
+  )
+(defn find-sheet-with-name [workbook pattern]
+  (let [sheet (select-sheet workbook pattern)]
+    (if (nil? sheet)
+      ;; dump a list of available sheetnames and throw an exception
+      (let [sheets (sheet-seq workbook)
+            sheet-names (map #(sheet-name %) sheets)]
+        (throw (Exception. (str "Unable to find sheet with name " pattern ". "
+                                "List of available sheets: " 
+                                (apply str (interpose "," sheet-names))))))
+      sheet)
+    ))
+
 (defn lazy-file-lines [filename]
   (letfn [(helper [rdr]
             (lazy-seq
@@ -179,7 +194,7 @@
 
 (defmethod read-lines :xls [{:keys [filename sheetname max]}]
   (let [workbook (load-workbook filename)
-        sheet (select-sheet sheetname workbook)
+        sheet (find-sheet-with-name workbook sheetname)
         lines (excel-sheet-to-lines sheet)
         lines* (map #(row-to-string %) lines)
         ]
@@ -651,10 +666,9 @@
        (outputs-to-csv-lines (get-in specs [:global :output-separator]))))
 
 (defn convert-file [input-filename specs output-filename sheetname]
-  (let [specs* (add-defaults-to-specs specs)
-        lines (read-file input-filename sheetname)]
+  (let [specs* (add-defaults-to-specs specs)]
     (try
-      (->> lines
+      (->> (read-file input-filename sheetname)
            (process-lines specs*)
            (lines-to-outputs specs*)
            (csv-outputs-to-file output-filename)

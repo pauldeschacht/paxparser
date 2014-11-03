@@ -13,7 +13,7 @@
         [parser.pax.dsl.mx-sase :as mx]
         [parser.pax.dsl.icao-dataplus :as icao-dataplus]
         [parser.pax.dsl.kac :as kac]
-        [parser.pax.dsl.referential:as ref]
+        [parser.pax.dsl.referential :as ref]
         )
     (:gen-class))
 
@@ -52,9 +52,9 @@
      (contains-all? s ["mx" "regnac"]) mx/mx-citypair-spec
      (contains-all? s ["mx" "details"]) [(mx/mx-airport-spec "totdom" ["YEAR" "INTERNATIONAL"]) (mx/mx-airport-spec "totdom" ["YEAR" "DOMESTIC"]) ]
      (contains-all? s ["kac"]) kac/kac-spec
-     (contains-all? in ["ori_por_public"]) [referential/ref-airport-specs referential/ref-city-specs]
-     (contains-all? in ["ori_airlines"]) referential/ref-airline-specs
-     (contains-all? in ["ori_countries"]) referential/ref-country-specs
+     (contains-all? in ["ori_por_public"]) [ref/ref-airport-specs ref/ref-city-specs]
+     (contains-all? in ["ori_airlines"]) ref/ref-airline-specs
+     (contains-all? in ["ori_countries"]) ref/ref-country-specs
      :else (throw (Exception. "Cannot determine the specs for the input (forget the name of the Excel sheet?) ")))
     ))
 

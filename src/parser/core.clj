@@ -1,6 +1,6 @@
 (ns parser.core
   (:use [clojure.java.io])
-  (:use [dk.ative.docjure.spreadsheet])
+  (:use [dk.ative.docjure.spreadsheet :as xls])
   (:use [clojure.data.csv :as csv])
   (:use [clojure.tools.logging :as log])
   (:use [clojure.stacktrace])
@@ -154,18 +154,16 @@
      )))
 (defn excel-sheet-to-lines [sheet]
   (->> sheet
-       (row-seq)
+       (xls/row-seq)
        ))
 
-(defn get-all-sheet-names [workbook]
-
-  )
-(defn find-sheet-with-name [workbook pattern]
-  (let [sheet (select-sheet workbook pattern)]
+(defn find-sheet-with-name [workbook sheetname]
+  (let [pattern (re-pattern sheetname)
+        sheet (xls/select-sheet pattern workbook)]
     (if (nil? sheet)
       ;; dump a list of available sheetnames and throw an exception
-      (let [sheets (sheet-seq workbook)
-            sheet-names (map #(sheet-name %) sheets)]
+      (let [sheets (xls/sheet-seq workbook)
+            sheet-names (map #(xls/sheet-name %) sheets)]
         (throw (Exception. (str "Unable to find sheet with name " pattern ". "
                                 "List of available sheets: " 
                                 (apply str (interpose "," sheet-names))))))
@@ -193,7 +191,7 @@
       (take max (lazy-file-lines filename)))))
 
 (defmethod read-lines :xls [{:keys [filename sheetname max]}]
-  (let [workbook (load-workbook filename)
+  (let [workbook (xls/load-workbook filename)
         sheet (find-sheet-with-name workbook sheetname)
         lines (excel-sheet-to-lines sheet)
         lines* (map #(row-to-string %) lines)
@@ -203,8 +201,8 @@
       (take max lines*))))
 (defmethod read-lines :xlsx [params]
   (let [{:keys [filename sheetname max]} params
-        workbook (load-workbook filename)
-        sheet (select-sheet sheetname workbook)
+        workbook (xls/load-workbook filename)
+        sheet (find-sheet-with-name workbook sheetname)
         lines (excel-sheet-to-lines sheet)
         lines* (map #(row-to-string %) lines)
         ]

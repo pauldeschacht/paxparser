@@ -31,6 +31,13 @@
     (cond
      (contains-all? s ["aci" "international"]) aci/aci-spec
      (contains-all? s ["acsa"]) acsa/acsa-spec
+     (contains-all? s ["albatross" "2013!"]) albatross/albatross-spec-old-output-2013
+     (contains-all? s ["albatross" "2012!"]) albatross/albatross-spec-old-output-2012
+     (contains-all? s ["albatross" "2011!"]) albatross/albatross-spec-old-output-2011
+     (contains-all? s ["albatross" "2010!"]) albatross/albatross-spec-old-output-2010
+     (contains-all? s ["albatross" "2009!"]) albatross/albatross-spec-old-output-2009
+     (contains-all? s ["albatross" "2008!"]) albatross/albatross-spec-old-output-2008
+     (contains-all? s ["albatross" "2007!"]) albatross/albatross-spec-old-output-2007
      (contains-all? s ["albatross"]) albatross/albatross-spec
      ;;     (contains-all? s ["anac_brasil_2"]) anac/anac-spec
      ;;     (contains-all? s ["anac_brasil_3"]) anac-2014/anac-2014-spec
@@ -52,7 +59,8 @@
      (contains-all? s ["mx" "regnac"]) mx/mx-citypair-spec
      (contains-all? s ["mx" "details"]) [(mx/mx-airport-spec "totdom" ["YEAR" "INTERNATIONAL"]) (mx/mx-airport-spec "totdom" ["YEAR" "DOMESTIC"]) ]
      (contains-all? s ["kac"]) kac/kac-spec
-     (contains-all? in ["ori_por_public"]) [ref/ref-airport-specs ref/ref-city-specs]
+     (contains-all? s ["ori_por_public" "airport"]) ref/ref-airport-specs
+     (contains-all? s ["ori_por_public" "city"]) ref/ref-city-specs
      (contains-all? in ["ori_airlines"]) ref/ref-airline-specs
      (contains-all? in ["ori_countries"]) ref/ref-country-specs
      :else (throw (Exception. "Cannot determine the specs for the input (forget the name of the Excel sheet?) ")))

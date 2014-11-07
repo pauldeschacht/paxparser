@@ -30,6 +30,7 @@
   (fn [specs value & line]
     (if (empty? value)
       value ;; empty string or nil
+      ;;true
       (let [value-date (convert-date value)]
         (if (false? (fn-cmp value-date d))
           false
@@ -67,8 +68,9 @@
 
 ;; transform
 (defn ref-city? []
-  (fn [specs value & line]
-    (= "P" value)))
+  (fn [specs cells value]
+    (let [fclass (get-named-cell-value "fclass" cells)]
+      (= "P" fclass))))
 
 (defn ref-specs
   ([fn-filter]
@@ -103,8 +105,9 @@
                {:index 41 :name "location_type"}
                ]
       :columns [{:name "fcode" :transform-line fn-filter :skip-line (ref-cell-false?)}
-                {:name "date_from" :transform (ref-date-after? valid-from) :skip-line (ref-cell-false?)}
-                {:name "date_to" :transform (ref-date-before? valid-to) :skip-line (ref-cell-false?)}
+                ;;TODO fix
+;;                {:name "date_from" :transform (ref-date-after? valid-from) :skip-line (ref-cell-false?)}
+;;                {:name "date_to" :transform (ref-date-before? valid-to) :skip-line (ref-cell-false?)}
                 ]
       :output [{:name "iata_code"}
                {:name "icao_code"}

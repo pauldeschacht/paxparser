@@ -157,18 +157,28 @@
        (xls/row-seq)
        ))
 
+(defn report-all-sheetnames [workbook]
+  (->> (xls/sheet-seq workbook)
+       (map #(xls/sheet-name %)))
+  )
+
+(defn throw-exception-invalid-sheetname! [workbook sheetname]
+  (throw (Exception. (str "Unable to find sheet with name " sheetname ". "
+                          "List of available sheets: " 
+                          (apply str (interpose "," (report-all-sheetnames workbook))))))
+  )
+
 (defn find-sheet-with-name [workbook sheetname]
-  (let [pattern (re-pattern sheetname)
-        sheet (xls/select-sheet pattern workbook)]
-    (if (nil? sheet)
-      ;; dump a list of available sheetnames and throw an exception
-      (let [sheets (xls/sheet-seq workbook)
-            sheet-names (map #(xls/sheet-name %) sheets)]
-        (throw (Exception. (str "Unable to find sheet with name " pattern ". "
-                                "List of available sheets: " 
-                                (apply str (interpose "," sheet-names))))))
-      sheet)
-    ))
+  (if (or (nil? sheetname)
+          (empty? sheetname))
+    (throw-exception-invalid-sheetname! workbook sheetname)
+    (let [pattern (re-pattern sheetname)
+          sheet (xls/select-sheet pattern workbook)]
+      (if (nil? sheet)
+        ;; dump a list of available sheetnames and throw an exception
+        (throw-exception-invalid-sheetname! workbook)
+        sheet)
+      )))
 
 (defn lazy-file-lines [filename]
   (letfn [(helper [rdr]
@@ -199,6 +209,7 @@
     (if (nil? max)
       lines*
       (take max lines*))))
+
 (defmethod read-lines :xlsx [params]
   (let [{:keys [filename sheetname max]} params
         workbook (xls/load-workbook filename)
@@ -615,7 +626,7 @@
                     :quote "\""
                     :thousand-separator nil
                     :decimal-separator "."
-                    :output-separator "\t"}
+                   :output-separator "\t"}
                    (:global specs))
    :skip (:skip specs)
    :stop (:stop specs)

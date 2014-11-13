@@ -3,6 +3,13 @@
   (:use [parser.pax.core])
   (:use [parser.pax.dsl.generic-pax-output]))
 
+(defn remove-empty []
+  (fn [specs value & line]
+    (if (or (nil? value)
+            (empty? value)
+            (empty? (clojure.string/trim value)))
+      nil
+      value)))
 
 (def kac-spec
   {:global {:thousand-separator ","
@@ -20,7 +27,7 @@
             {:index 4 :name "origin-airport-name"}
             {:index 5 :name "destination-airport-iata"}
             {:index 6 :name "destination-airport-name"}
-            {:index 7 :name "airline-iata"}
+            {:index 7 :name "airline-icao"}
             {:index 8 :name "arrdom"}
             {:index 9 :name "depdom"}
             {:index 10 :name "totdom"}
@@ -36,10 +43,10 @@
              {:name "valid-from" :transform (get-valid-from)}
              {:name "valid-to" :transform (get-valid-from)}
 
-             {:name "origin-airport-iata" :repeat true}
-             {:name "origin-airport-name" :repeat true}
-             {:name "destination-airport-iata" :repeat true}
-             {:name "destination-airport-name" :repeat true}
+             {:name "origin-airport-iata" :transform (remove-empty) :repeat-down true}
+             {:name "origin-airport-name" :transform (remove-empty) :repeat-down true}
+             {:name "destination-airport-iata" :transform (remove-empty) :repeat-down true}
+             {:name "destination-airport-name" :transform (remove-empty) :repeat-down true}
              
              {:name "metric" :value "pax"}
              {:name "segment" :value nil}
@@ -47,7 +54,7 @@
              {:name "arrdom" :transform (convert-to-int)}
              {:name "depdom" :transform (convert-to-int)}
              {:name "totdom" :transform (convert-to-int)}
-             {:name "depdom" :transform (convert-to-int)}
+             {:name "arrint" :transform (convert-to-int)}
              {:name "depint" :transform (convert-to-int)}
              {:name "totint" :transform (convert-to-int)}
              ]

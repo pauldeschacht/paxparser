@@ -32,7 +32,7 @@
       value ;; empty string or nil
       ;;true
       (let [value-date (convert-date value)]
-        (if (false? (fn-cmp value-date d))
+        (if (false? (fn-cmp d value-date))
           false
           value)))))
 
@@ -106,8 +106,8 @@
                ]
       :columns [{:name "fcode" :transform-line fn-filter :skip-line (ref-cell-false?)}
                 ;;TODO fix
-;;                {:name "date_from" :transform (ref-date-after? valid-from) :skip-line (ref-cell-false?)}
-;;                {:name "date_to" :transform (ref-date-before? valid-to) :skip-line (ref-cell-false?)}
+                {:name "date_from" :transform (ref-date-after? valid-from) :skip-line (ref-cell-false?)}
+                {:name "date_to" :transform (ref-date-before? valid-to) :skip-line (ref-cell-false?)}
                 ]
       :output [{:name "iata_code"}
                {:name "icao_code"}

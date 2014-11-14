@@ -10,9 +10,10 @@
         [parser.pax.dsl.clac :as clac]
         [parser.pax.dsl.destatis :as destatis]
         [parser.pax.dsl.dhmi :as dhmi]
-        [parser.pax.dsl.mx-sase :as mx]
         [parser.pax.dsl.icao-dataplus :as icao-dataplus]
+        [parser.pax.dsl.indonesia :as indonesia]
         [parser.pax.dsl.kac :as kac]
+        [parser.pax.dsl.mx-sase :as mx]
         [parser.pax.dsl.referential :as ref]
         )
     (:gen-class))
@@ -52,6 +53,7 @@
      (contains-all? s ["destatis" "2.2.2"]) destatis/destatis-int-countryairport-spec
      (contains-all? s ["dhmi"]) dhmi/dhmi-spec
      (contains-all? s ["icao"]) icao-dataplus/icao-airport-spec
+     (contains-all? s ["indonesia"]) indonesia/indonesia-spec
      (contains-all? s ["mx" "reg int"]) mx/mx-citypair-spec
      (contains-all? s ["mx" "reg nac"]) mx/mx-citypair-spec
      (contains-all? s ["mx" "regnal"]) mx/mx-citypair-spec

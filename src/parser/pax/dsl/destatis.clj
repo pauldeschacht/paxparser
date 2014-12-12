@@ -168,16 +168,16 @@
           (map #(hash-map :name %1 :transform (destatis-convert-to-int))
                (destatis-airport-int-list))))
 
-(defn destatis-int-outputs []
+(defn destatis-int-outputs [arrival?]
   (map #(merge-pax-output (generic-pax-output) %)
        (map #(vector
               {:name "destination-airport-name" :value %1}
-              {:name "totint" :source %1 :skip-line (destatis-skip-empty-pax)})
+              {:name (if arrival? "arrtot" "deptot") :source %1 :skip-line (destatis-skip-empty-pax)})
             (destatis-airport-int-list)
             )))
 
 
-(def destatis-int-airportpair-spec
+(defn destatis-int-spec [arrival?]
   {:global {:thousand-separator " "
             :decimal-separator ""
             :output-separator ","
@@ -191,7 +191,7 @@
 
    :columns (destatis-int-airportpair-columns)
 
-   :outputs (destatis-int-outputs)
+   :outputs (destatis-int-outputs arrival?)
    })
 ;;
 ;; INTERNATIONAL COUNTRYAIRPORT
@@ -218,7 +218,7 @@
           (map #(hash-map :name %1 :transform (destatis-convert-to-int))
                (destatis-airport-int-list))))
 
-(def destatis-int-countryairport-spec
+(defn destatis-countryairport-spec [arrival?]
   {:global {:thousand-separator " "
             :decimal-separator ""
             :output-separator ","
@@ -232,5 +232,11 @@
 
    :columns (destatis-int-countryairport-columns)
 
-   :outputs (destatis-int-outputs)
+   :outputs (destatis-int-outputs arrival?)
    })
+
+(def destatis-countryairport-arr-spec
+  (destatis-countryairport-spec true))
+
+(def destatis-countryairport-dep-spec
+  (destatis-countryairport-spec false))

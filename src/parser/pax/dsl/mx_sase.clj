@@ -132,12 +132,14 @@
 ;; (done in 2 passes, one for domestic and one for international)
 ;;
 (defn mx-airport-spec [motive skip-lines]
-  {:global {:thousand-separator ""
+  {:global {:token-separator "^"
+            :thousand-separator ""
             :decimal-separator ""
-            :output-separator ","}
+            :output-separator "^"}
    
    :skip [(line-empty?)
           (line-contains? skip-lines)
+          (line-contains? ["FLIGHTS" "CARGO"])
           ]
 
    :tokens [

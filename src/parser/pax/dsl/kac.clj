@@ -114,7 +114,7 @@
   )
 
 ;;
-;; KAC domestic kac-origin-airport-name = jej
+;; KAC domestic kac-origin-airport-name = jeju
 ;;              kac-destination-airport-name = gimpo
 ;;              kac-arrival = X
 ;;              kac-departure = Y

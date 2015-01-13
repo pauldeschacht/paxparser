@@ -95,8 +95,9 @@
 
 
 (defn process [spec in out sheetname]
-  (if (coll? spec)
-    (doall (map #(parser/convert-pax-file in %1 out sheetname) spec))
+  (if (seq? spec)
+    (do
+      (doall (map #(parser/convert-pax-file in %1 out sheetname) spec)))
     (do
       (println (str "convert-pax-file " in))
       (parser/convert-pax-file in spec out sheetname)))

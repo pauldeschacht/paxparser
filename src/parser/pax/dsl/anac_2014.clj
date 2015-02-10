@@ -183,6 +183,45 @@
             ]
    })
 
+
+(defn anac-non-icao [words]
+  (fn [specs value]
+    (if (some #(= value %1) words)
+      true
+      false)))
+
+(def anac-2015-spec-convert-to-old
+  {:global {:thousand-separator ","
+            :decimal-separator "."
+            :output-separator "\t"
+            }
+
+   :skip [(line-contains? ["Discriminação" "INFRAERO" "Movimento" "CABOTAGEM" "SUPERINTENDÊNCIA" "REGIONAL"])]
+   
+   :tokens [{:index 0 :name "info" :split (copy-into-cells ["info" "origin-airport-icao" "origin-airport-name" "regular" "domestic" ])}
+            {:index 5 :name "total" :split (copy-into-cells ["totdom" "totint" "tottot"])}
+            ]
+   
+   :columns [{:name "info" :skip-line (anac-skip ["NACIONAL"])}
+             {:name "paxtype" :value "airport"}
+             {:name "paxsource" :value "ANAC_2"}
+             {:name "origin-airport-icao" :repeat-down true :transform (anac-get-airport-icao) :skip-line (anac-cell-empty?)}
+             {:name "origin-airport-name" :repeat-down true :transform (anac-get-airport-name) :skip-line (cell-contains? ["ANAC"])}
+             {:name "regular" :repeat-down true :transform (anac-is-regular) :skip-line (cell-contains? ["skip" "not-regular"])}
+             {:name "domestic" :repeat-down true :transform (anac-is-domestic) :skip-line (cell-contains? ["skip"])}
+             {:name "totdom" :transform (convert-to-int) :transform-line (anac-totdom)}
+             {:name "totint" :transform (convert-to-int) :transform-line (anac-totint)}
+             {:name "tottot" :transform (convert-to-int) :transform-line (anac-tottot)}]
+   :output [{:name "type" :value "airport"}
+            {:name "origin-airport-icao"}
+            {:name "origin-airport-iata" :value ""}
+            {:name "origin-airport-name"}
+            {:name "totdom"}
+            {:name "totint"}
+            {:name "tottot"}
+            ]
+   })
+
 (defn empty-string? [k s] (or (nil? s) (= 0 (count s))))
 (defn valid-string? [k s] (not (empty-string? k s)))
 (defn dissoc-with-pred [f m]

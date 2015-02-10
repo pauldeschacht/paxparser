@@ -61,6 +61,7 @@
     "albatross-2012-spec" albatross/albatross-spec-old-output-2012
     "albatross-2013-spec" albatross/albatross-spec-old-output-2013
     "anac-2014-spec" anac-2014/anac-2014-spec-convert-to-old
+    "anac-2015-spec" anac-2014/anac-2015-spec-convert-to-old
     "btre-dom-spec" btre/btre-dom-spec
     "btre-int-countrypairairline-spec" btre/btre-int-countrypairairline-spec
     "btre-int-airportpair-spec" btre/btre-int-airportpair-spec

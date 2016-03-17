@@ -67,10 +67,15 @@
       false)))
 
 ;; transform
+;;(defn ref-city? []
+;;  (fn [specs cells value]
+;;    (let [fclass (get-named-cell-value "fclass" cells)]
+;;    (= "P" fclass))))
 (defn ref-city? []
   (fn [specs cells value]
-    (let [fclass (get-named-cell-value "fclass" cells)]
-      (= "P" fclass))))
+    (let [location (get-named-cell-value "location_type" cells)]
+     (= "C" location))))
+
 
 (defn ref-specs
   ([fn-filter]
